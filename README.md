@@ -51,7 +51,7 @@ Add the repository as a dependency in your `Package.swift`:
 ```swift
 dependencies: [
     .package(
-        url: "https://github.com/YOUR_GITHUB_USERNAME/DynamicNotch.git",
+        url: "https://github.com/govijr/DynamicNotch-MacOS.git",
         from: "0.1.0"
     )
 ]
@@ -70,7 +70,7 @@ targets: [
 ]
 ```
 
-The repository URL in the examples will be replaced with the final published URL when the package is pushed.
+The package is published at [github.com/govijr/DynamicNotch-MacOS](https://github.com/govijr/DynamicNotch-MacOS).
 
 ## Two ways to use it
 
@@ -318,4 +318,8 @@ DynamicNotch is currently intended for early adopters and production prototypes.
 
 ## License
 
-The license will be added before the first public release.
+DynamicNotch is available under the MIT License.
+
+Copyright (c) 2026 Govi
+
+See [LICENSE](LICENSE) for the full license text.
