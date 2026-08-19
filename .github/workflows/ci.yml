@@ -1,0 +1,24 @@
+name: Swift Package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Test and build
+    runs-on: macos-14
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build library in release mode
+        run: swift build --configuration release --product DynamicNotch
+
+      - name: Build demo in release mode
+        run: swift build --configuration release --product DynamicNotchDemo
