@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Agent integration fixture</title>
+<style>body{font:18px system-ui;background:#f4f6fa;color:#222;padding:30px}label{display:block;margin:16px 0}input,select,button{font:inherit;padding:8px}button{margin:8px}#spacer{height:1300px}</style></head>
+<body>
+<h1>Agent integration fixture</h1>
+<form id="profile"><label>Your name <input id="name" name="name" placeholder="Full name"></label>
+<label>Your notes <textarea id="notes"></textarea></label>
+<label>Secret <input id="secret" type="password" value="fixture-password-must-not-leak"></label>
+<label>Plan <select id="plan"><option value="starter">Starter</option><option value="pro">Pro</option></select></label>
+<label><input id="consent" type="checkbox"> Remember my choice</label>
+<button id="submit" type="submit">Save profile</button></form>
+<button id="replace">Replace action</button>
+<button id="rename">Original label</button>
+<button id="disabled" disabled>Disabled action</button>
+<button style="display:none">Hidden action</button>
+<input id="readonly" aria-label="Read only" readonly value="fixed">
+<div id="shadow"></div>
+<iframe title="Embedded content" srcdoc="<button>Frame action</button>"></iframe>
+<a id="popup" href="popup.html" target="_blank">Open popup</a>
+<div id="result" role="status">No profile saved</div>
+<div id="spacer"></div><p id="bottom">Bottom of fixture</p>
+<script>
+window.events = [];
+nameInput = document.getElementById('name');
+nameInput.addEventListener('input', e => window.events.push(['input',e.target.value]));
+nameInput.addEventListener('change', e => window.events.push(['change',e.target.value]));
+document.getElementById('profile').addEventListener('submit', e => {
+ e.preventDefault();
+ document.getElementById('result').textContent = `Saved: ${nameInput.value} / ${document.getElementById('plan').value} / ${document.getElementById('consent').checked}`;
+ const mark = document.createElement('p'); mark.id='saved'; mark.textContent='Profile was saved';document.body.append(mark);
+});
+document.getElementById('replace').onclick = e => { const replacement=e.target.cloneNode(true);replacement.id='replacement';replacement.textContent='Replacement action';e.target.replaceWith(replacement); };
+const root = document.getElementById('shadow').attachShadow({mode:'open'});
+root.innerHTML='<button id="shadowButton">Shadow action</button>';
+root.querySelector('button').onclick=()=>document.getElementById('result').textContent='Shadow clicked';
+</script></body></html>

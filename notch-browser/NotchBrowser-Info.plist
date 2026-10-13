@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Notch Browser</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Notch Browser</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Govi</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>SUFeedURL</key>
+	<string>https://qymrzmmsroxkteaxbgoo.supabase.co/storage/v1/object/public/updates/notch-browser/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>BUZ6XwUfwtv9mEepwk4IM2YANcJjr7CzixWrOVrcng0=</string>
+	<key>NotchBrowserPolarOrganizationID</key>
+	<string>42934185-1dd1-4b1b-be9c-aeeaa7cdca24</string>
+	<key>NotchBrowserPolarBenefitID</key>
+	<string>59383885-a683-4c40-9567-880448f7f880</string>
+	<key>NotchBrowserPolarCheckoutURL</key>
+	<string>https://buy.polar.sh/polar_cl_h61CaUncTVTTbKDnENNCs7cizvFTBYopQmWaS15R88r</string>
+</dict>
+</plist>

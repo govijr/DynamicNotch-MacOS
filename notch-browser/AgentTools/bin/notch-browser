@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+agent_tools_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+agent_binary="$agent_tools_root/../../.build/notch-browser-agent-tools/notch-browser"
+if [ ! -x "$agent_binary" ] || [ "$agent_tools_root/Sources/main.swift" -nt "$agent_binary" ] || [ "$agent_tools_root/../notch-browser/BrowserAgentSocket.swift" -nt "$agent_binary" ] || [ "$agent_tools_root/skills/notch-browser/SKILL.md" -nt "$agent_binary" ]; then
+  "$agent_tools_root/build.sh" >&2
+fi
+exec "$agent_binary" "$@"
