@@ -1,0 +1,122 @@
+{
+  "measuredAt": "2026-10-14T07:57:15.274Z",
+  "machine": {
+    "cpu": "Apple M4 Pro",
+    "ramBytes": 25769803776,
+    "macOS": "26.0"
+  },
+  "notch": {
+    "version": "1.0 (1)",
+    "configuration": "Debug",
+    "executableSHA256": "893580c62d6a82bce2077238b7e90d8b86e6fe35c2199ad28248820c584a0e1d",
+    "builtAt": "2026-10-14T07:44:30.051Z",
+    "pinnedArtifact": true
+  },
+  "protocol": {
+    "trials": 3,
+    "settleSeconds": 10,
+    "samplesPerTrial": 10,
+    "sampleIntervalMs": 750,
+    "memoryMetric": "sum of macOS proc_pid_rusage ri_phys_footprint for the host and attributable helpers; MiB = 2^20 bytes",
+    "fixtureSHA256": "3e71c90acbdf6a64140d8e785d87547e1df3fd8dcc4221222282de705000664a",
+    "background": true,
+    "chromeProfile": "fresh, signed out, no extensions; normal default Memory Saver preferences; no discarded pages permitted",
+    "freshBrowserProcesses": true,
+    "coldStartSpeedMeasured": false,
+    "viewport": {
+      "height": 720,
+      "width": 1024
+    }
+  },
+  "chrome": {
+    "version": "Chrome/155.0.8059.40"
+  },
+  "summary": [
+    {
+      "scenario": "one-controlled-tab",
+      "notch": {
+        "medianMiB": 98.72140502929688,
+        "trialMediansMiB": [
+          98.58854675292969,
+          98.72140502929688,
+          100.16671752929688
+        ],
+        "minMiB": 98.58073425292969,
+        "maxMiB": 100.56515502929688,
+        "taskMedianMs": 85.00000000000364
+      },
+      "chrome": {
+        "medianMiB": 497.21318435668945,
+        "trialMediansMiB": [
+          497.21318435668945,
+          518.2140655517578,
+          491.81481552124023
+        ],
+        "minMiB": 478.2283630371094,
+        "maxMiB": 534.1672592163086,
+        "taskMedianMs": 72.10000002384186
+      }
+    },
+    {
+      "scenario": "five-controlled-tabs",
+      "notch": {
+        "medianMiB": 206.3488540649414,
+        "trialMediansMiB": [
+          206.3488540649414,
+          206.08318328857422,
+          207.7707061767578
+        ],
+        "minMiB": 206.05193328857422,
+        "maxMiB": 209.4425811767578,
+        "taskMedianMs": null
+      },
+      "chrome": {
+        "medianMiB": 663.2024345397949,
+        "trialMediansMiB": [
+          663.2024345397949,
+          661.5540313720703,
+          727.7023086547852
+        ],
+        "minMiB": 649.7957153320312,
+        "maxMiB": 745.7968826293945,
+        "taskMedianMs": null
+      }
+    },
+    {
+      "scenario": "five-public-sites",
+      "notch": {
+        "medianMiB": 303.6460266113281,
+        "trialMediansMiB": [
+          311.3180160522461,
+          303.4429473876953,
+          303.6460266113281
+        ],
+        "minMiB": 303.2866973876953,
+        "maxMiB": 431.3335723876953,
+        "taskMedianMs": null
+      },
+      "chrome": {
+        "medianMiB": 632.021614074707,
+        "trialMediansMiB": [
+          626.6074600219727,
+          736.9515075683594,
+          632.021614074707
+        ],
+        "minMiB": 620.0450057983398,
+        "maxMiB": 737.6857681274414,
+        "taskMedianMs": null
+      }
+    }
+  ],
+  "complete": true,
+  "audit": {
+    "passed": true,
+    "trials": 9,
+    "memorySamples": 180,
+    "timedTaskRepeats": 30,
+    "matchedDocumentsAndViewports": true,
+    "freshBrowserProcesses": true
+  },
+  "displayDate": "October 14, 2026",
+  "downloadPath": "/benchmarks/notch-vs-chrome-2026-10-14.json"
+}

@@ -1,0 +1,87 @@
+.landing-container {
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  padding-inline: 40px;
+}
+
+.brand-section { max-width: 1040px; padding-block: 64px 80px; }
+.landing-eyebrow { margin-bottom: 14px; color: #6e6e73; font-size: 14px; font-weight: 500; letter-spacing: -0.015em; }
+.landing-heading { font-size: clamp(36px, 4.6vw, 56px); font-weight: 600; line-height: 1.08; letter-spacing: -0.055em; text-wrap: balance; }
+.feature-section { padding-block: 24px 104px; scroll-margin-top: 64px; }
+.feature-heading { text-align: center; }
+.feature-heading h2 { max-width: 760px; margin-inline: auto; }
+.feature-laptop { max-width: 1040px; margin-top: 40px; }
+.feature-story + .feature-story { margin-top: 112px; }
+
+.comparison-section { max-width: 960px; padding-block: 40px 72px; scroll-margin-top: 56px; }
+.comparison-heading { color: #335a79; background: linear-gradient(110deg, #163a56, #7297b5); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; font-size: clamp(32px, 4.2vw, 48px); font-weight: 600; line-height: 1.08; letter-spacing: -0.055em; text-wrap: balance; }
+.comparison-stats { display: flex; align-items: center; gap: 36px; margin-top: 48px; }
+.comparison-mark { display: grid; min-height: 88px; flex-shrink: 0; align-items: center; border-right: 1px solid #d9d9df; padding-right: 36px; }
+.comparison-stat-grid { display: grid; flex: 1; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+.comparison-stat-grid > div { display: flex; min-width: 0; flex-direction: column-reverse; justify-content: flex-end; gap: 12px; }
+.comparison-stat-grid dd { display: flex; align-items: baseline; gap: 5px; font-size: clamp(36px, 4.5vw, 52px); font-weight: 600; line-height: 1; letter-spacing: -0.065em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.comparison-stat-grid dd span { font-size: 18px; font-weight: 500; letter-spacing: -0.03em; }
+.comparison-stat-grid dt { max-width: 150px; color: #6e6e73; font-size: 12px; line-height: 1.5; }
+.comparison-positioning { margin-top: 36px; color: #424245; font-size: 16px; font-weight: 500; line-height: 1.6; letter-spacing: -0.02em; text-wrap: pretty; }
+.comparison-note { max-width: 750px; margin-top: 12px; color: #747479; font-size: 11px; line-height: 1.7; }
+.comparison-note a { color: #53535a; text-decoration: underline; text-underline-offset: 3px; }
+
+.pricing-section { max-width: 960px; padding-block: 72px 112px; scroll-margin-top: 48px; text-align: center; }
+.early-discount { display: flex; align-items: baseline; justify-content: center; gap: 12px; margin-bottom: 20px; font-size: 14px; font-weight: 500; }
+.early-discount del { color: #86868b; font-size: 18px; text-decoration-thickness: 1px; }
+.big-buy-button { display: flex; min-height: 160px; align-items: center; justify-content: center; gap: 18px; border-radius: 999px; padding: 30px 24px; background: #111; color: #fff; font-size: clamp(40px, 6vw, 72px); font-weight: 600; line-height: 1.1; letter-spacing: -0.055em; transition: background 200ms, transform 250ms; }
+.big-buy-button:hover { background: #262626; transform: scale(1.012); }
+.big-buy-button:focus-visible { outline-color: #111; }
+
+.faq-section { padding-bottom: 80px; scroll-margin-top: 48px; }
+.faq-layout { max-width: 820px; }
+.faq-heading { margin-bottom: 32px; font-size: 32px; font-weight: 600; line-height: 1.1; letter-spacing: -0.045em; text-align: center; }
+.faq-questions { border-top: 1px solid #e5e5e9; }
+.faq-questions > details { border-bottom: 1px solid #e5e5e9; scroll-margin-top: 48px; }
+.landing-disclosure > summary { display: flex; min-height: 72px; cursor: pointer; list-style: none; align-items: center; justify-content: space-between; gap: 24px; padding-block: 22px; font-size: 15px; font-weight: 500; line-height: 1.5; letter-spacing: -0.025em; }
+.landing-disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure-plus { display: grid; width: 26px; height: 26px; flex-shrink: 0; place-items: center; border-radius: 50%; background: #f0f0f3; color: #6e6e73; font-size: 19px; font-weight: 400; line-height: 1; transition: transform 250ms, background 250ms; }
+.landing-disclosure[open] > summary .disclosure-plus { transform: rotate(45deg); background: #e5e5eb; }
+.landing-disclosure > summary:hover .disclosure-plus { background: #e5e5eb; }
+.faq-answer { padding: 0 36px 24px 0; color: #6e6e73; font-size: 14px; line-height: 1.75; }
+.faq-agent-tools { max-width: 660px; padding-bottom: 28px; }
+.agent-skill-link { display: inline-block; margin-bottom: 20px; color: #335a79; font-size: 13px; font-weight: 500; text-decoration: underline; text-underline-offset: 4px; }
+.landing-footer { border-top: 1px solid #e5e5e9; background: #f5f5f7; }
+
+.landing-reveal { min-width: 0; transition: opacity 750ms ease-out, transform 900ms cubic-bezier(0.16, 1, 0.3, 1); }
+.landing-reveal[data-reveal="pending"] { opacity: 0; transform: translateY(24px); }
+.landing-reveal[data-reveal-variant="media"] { transition-duration: 900ms, 1100ms; transition-timing-function: ease-out, cubic-bezier(0.22, 1, 0.36, 1); }
+.landing-reveal[data-reveal="pending"][data-reveal-variant="media"] { transform: translateY(30px) scale(0.985); }
+.landing-reveal[data-reveal-variant="fade"] { transform: none; transition-duration: 600ms; }
+
+@media (max-width: 639px) {
+  .landing-container { padding-inline: 24px; }
+  .brand-section { padding-block: 40px 56px; }
+  .landing-eyebrow { margin-bottom: 12px; font-size: 12px; }
+  .feature-section { padding-block: 16px 64px; }
+  .feature-laptop { margin-top: 28px; }
+  .feature-story + .feature-story { margin-top: 72px; }
+  .comparison-section { padding-block: 16px 32px; }
+  .comparison-stats { margin-top: 28px; }
+  .comparison-mark { display: none; }
+  .comparison-stat-grid { gap: 14px; }
+  .comparison-stat-grid dd { gap: 3px; font-size: clamp(30px, 8.5vw, 36px); }
+  .comparison-stat-grid dd span { font-size: 12px; }
+  .comparison-stat-grid dt { font-size: 10px; }
+  .comparison-positioning { margin-top: 28px; font-size: 14px; }
+  .comparison-note { font-size: 10px; }
+  .pricing-section { padding-block: 56px 72px; }
+  .early-discount { margin-bottom: 16px; font-size: 12px; }
+  .early-discount del { font-size: 16px; }
+  .big-buy-button { min-height: 104px; gap: 12px; font-size: clamp(34px, 9vw, 44px); }
+  .faq-section { padding-bottom: 56px; }
+  .faq-heading { margin-bottom: 24px; font-size: 28px; }
+  .landing-disclosure > summary { min-height: 68px; font-size: 14px; }
+  .faq-answer { padding-right: 12px; font-size: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-reveal[data-reveal="pending"] { opacity: 1; transform: none; }
+  .big-buy-button:hover { transform: none; }
+}

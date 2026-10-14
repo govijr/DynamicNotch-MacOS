@@ -1,8 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import "./demo-video.css";
 
-export default function FeatureVideo({ src, poster, label }: { src: string; poster: string; label: string }) {
+export default function FeatureVideo({ src, poster, label, frame = "rose" }: {
+  src: string;
+  poster: string;
+  label: string;
+  frame?: "rose" | "midnight";
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const userPaused = useRef(false);
   const [playing, setPlaying] = useState(false);
@@ -47,39 +54,48 @@ export default function FeatureVideo({ src, poster, label }: { src: string; post
   }
 
   return (
-    <div className="relative overflow-hidden rounded-2xl sm:rounded-[20px]">
-      <video
-        ref={videoRef}
-        src={src}
-        poster={poster}
-        width={1228}
-        height={720}
-        className="block aspect-[307/180] w-full object-contain"
-        muted
-        loop
-        playsInline
-        preload="none"
-        aria-label={label}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onError={() => setFailed(true)}
-      >
-        <a href={src}>Watch the demo</a>
-      </video>
-      {/* {failed ? (
-        <a href={src} className="absolute bottom-3 right-3 rounded-full bg-white px-4 py-2 text-xs font-medium text-black shadow-sm">Open demo ↗</a>
-      ) : (
-        <button
-          type="button"
-          onClick={togglePlayback}
-          aria-label={`${playing ? "Pause" : "Play"} ${label}`}
-          className="absolute bottom-3 right-3 flex size-9 cursor-pointer items-center justify-center rounded-full bg-white/90 text-black shadow-sm backdrop-blur-sm transition-colors hover:bg-white sm:bottom-4 sm:right-4"
+    <div className={`macbook-demo ${frame === "midnight" ? "macbook-demo--midnight" : ""}`}>
+      <Image
+        src={frame === "midnight" ? "/macbook-frame2.png" : "/macbook-frame.png"}
+        width={frame === "midnight" ? 1964 : 1472}
+        height={frame === "midnight" ? 1192 : 900}
+        sizes="(min-width: 1040px) 960px, (min-width: 640px) calc(100vw - 80px), calc(100vw - 48px)"
+        alt=""
+        className="macbook-demo-frame"
+        draggable={false}
+      />
+      <div className="macbook-demo-screen">
+        <video
+          ref={videoRef}
+          src={src}
+          poster={poster}
+          className="demo-video macbook-demo-video"
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          aria-label={label}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onError={() => setFailed(true)}
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-            <path d={playing ? "M2 1h3v10H2zm5 0h3v10H7z" : "m3 1 8 5-8 5z"} />
-          </svg>
-        </button>
-      )} */}
+          <a href={src}>Watch the demo</a>
+        </video>
+        {failed ? (
+          <a href={src} className="absolute bottom-3 right-3 rounded-full bg-white px-4 py-2 text-xs font-medium text-black shadow-sm">Open demo ↗</a>
+        ) : (
+          <button
+            type="button"
+            onClick={togglePlayback}
+            aria-label={`${playing ? "Pause" : "Play"} ${label}`}
+            className="absolute bottom-3 right-3 flex size-9 cursor-pointer items-center justify-center rounded-full bg-white/90 text-black shadow-sm backdrop-blur-sm transition-colors hover:bg-white sm:bottom-4 sm:right-4"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+              <path d={playing ? "M2 1h3v10H2zm5 0h3v10H7z" : "m3 1 8 5-8 5z"} />
+            </svg>
+          </button>
+        )}
+      </div>
     </div>
   );
 }

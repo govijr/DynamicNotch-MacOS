@@ -1,10 +1,13 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import "./demo-video.css";
 
 export default function DemoVideo() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const shouldAutoPlay = useRef(true);
+  const automaticPause = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasError, setHasError] = useState(false);
 
@@ -12,17 +15,23 @@ export default function DemoVideo() {
     const video = videoRef.current;
     if (!video) return;
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const pauseAutomatically = () => {
+      if (!video.paused) {
+        automaticPause.current = true;
+        video.pause();
+      }
+    };
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && !motion.matches && shouldAutoPlay.current) {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.2 && !motion.matches && shouldAutoPlay.current) {
           void video.play().catch(() => {});
         } else {
-          video.pause();
+          pauseAutomatically();
         }
       },
       { threshold: 0.2 },
     );
-    const onMotionChange = () => { if (motion.matches) video.pause(); };
+    const onMotionChange = () => { if (motion.matches) pauseAutomatically(); };
     motion.addEventListener("change", onMotionChange);
     observer.observe(video);
     return () => {
@@ -45,24 +54,40 @@ export default function DemoVideo() {
 
   return (
     <div>
-      <div className="overflow-hidden rounded-xl bg-[#f5f5f5] sm:rounded-2xl">
-        <video
-          ref={videoRef}
-          className="demo-video aspect-[82/53] w-full object-contain"
-          src="/demo.mp4"
-          poster="/demo-poster.png"
-          muted
-          loop
-          playsInline
-          controls
-          preload="metadata"
-          aria-label="Demo of Notch Browser expanding from the Mac’s notch"
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          onError={() => setHasError(true)}
-        >
-          Your browser does not support video. <a href="/demo.mp4">Watch the demo.</a>
-        </video>
+      <div className="macbook-demo">
+        <Image
+          src="/macbook-frame.png"
+          width={1472}
+          height={900}
+          sizes="(min-width: 1120px) 1040px, (min-width: 640px) calc(100vw - 80px), calc(100vw - 48px)"
+          alt=""
+          className="macbook-demo-frame"
+          loading="eager"
+          draggable={false}
+        />
+        <div className="macbook-demo-screen">
+          <video
+            ref={videoRef}
+            className="demo-video macbook-demo-video"
+            src="/nbdemo.mp4"
+            poster="/nbdemo-poster.jpg"
+            muted
+            loop
+            playsInline
+            controls
+            preload="metadata"
+            aria-label="Demo of Notch Browser expanding from the Mac’s notch"
+            onPlay={() => { shouldAutoPlay.current = true; setIsPlaying(true); }}
+            onPause={() => {
+              if (!automaticPause.current) shouldAutoPlay.current = false;
+              automaticPause.current = false;
+              setIsPlaying(false);
+            }}
+            onError={() => setHasError(true)}
+          >
+            Your browser does not support video. <a href="/nbdemo.mp4">Watch the demo.</a>
+          </video>
+        </div>
       </div>
       {/* <div className="mt-4 flex items-center justify-between gap-4 text-[13px] text-[#777]">
         <p>{hasError ? "Having trouble playing?" : "A little peek at your new browser."}</p>

@@ -1,0 +1,45 @@
+.macbook-demo {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1472 / 900;
+}
+
+.macbook-demo-frame {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Display coordinates measured from the supplied 1472 × 900 MacBook image. */
+.macbook-demo-screen {
+  position: absolute;
+  left: 9.9864%;
+  top: 4.7778%;
+  width: 80.0272%;
+  height: 81.8889%;
+  overflow: hidden;
+  border-radius: 1.8% 1.8% 0 0 / 2.9% 2.9% 0 0;
+  background: #000;
+}
+
+.macbook-demo-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.macbook-demo--midnight {
+  aspect-ratio: 1964 / 1192;
+}
+
+/* Display bounds in the supplied 1964 × 1192 midnight MacBook image. */
+.macbook-demo--midnight .macbook-demo-screen {
+  left: 9.3177%;
+  top: 5.7047%;
+  width: 81.4664%;
+  height: 86.2416%;
+  border-radius: 0;
+}
