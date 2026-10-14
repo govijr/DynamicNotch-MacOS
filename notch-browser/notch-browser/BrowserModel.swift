@@ -19,6 +19,7 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var canGoForward = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var lastPageSnapshot: NSImage?
+    @Published private(set) var isPresentationReady = false
     @Published private(set) var isEmpty: Bool
 
     private(set) var requestedURL: URL?
@@ -30,18 +31,25 @@ final class BrowserModel: ObservableObject {
     // position, and in-page form state.
     private(set) var webView: WKWebView?
     private var navigationDelegate: BrowserNavigationDelegate?
+    private var navigationObservations: [NSKeyValueObservation] = []
     private var pendingNavigation: Task<Void, Never>?
     private var submittedRequestID: UUID?
+    private var snapshotCaptureID: UUID?
+    private var presentationID = UUID()
+    private(set) var snapshotMemoryCost = 0
+    private(set) var snapshotCapturedAt: Date?
 
     private let library: BrowserLibrary
     var onSessionChange: (() -> Void)?
     var onCreateWebView: ((WKWebViewConfiguration, URL?) -> WKWebView)?
+    var onSnapshotChange: (() -> Void)?
 
     var websiteDataStore: WKWebsiteDataStore {
         library.websiteDataStore
     }
 
-    init(library: BrowserLibrary? = nil, startsEmpty: Bool = false, initialURL: URL? = nil) {
+    init(library: BrowserLibrary? = nil, startsEmpty: Bool = false, initialURL: URL? = nil,
+         restoredTitle: String? = nil) {
         let library = library ?? BrowserLibrary.shared
         self.library = library
 
@@ -49,6 +57,8 @@ final class BrowserModel: ObservableObject {
         isEmpty = startsEmpty
         addressText = startURL?.absoluteString ?? ""
         requestedURL = startURL
+        let title = restoredTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        pageTitle = startsEmpty ? "New Tab" : (title.flatMap { $0.isEmpty ? nil : $0 } ?? startURL?.host ?? "Ready when you are")
     }
 
     @discardableResult
@@ -57,7 +67,7 @@ final class BrowserModel: ObservableObject {
         let configuration = suppliedConfiguration ?? WKWebViewConfiguration()
         if suppliedConfiguration == nil { configuration.websiteDataStore = websiteDataStore }
         BrowserAgentDOM.install(in: configuration)
-        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1024, height: 720), configuration: configuration)
+        let webView = BrowserAssetWebView(frame: NSRect(x: 0, y: 0, width: 1024, height: 720), configuration: configuration)
         webView.customUserAgent = Self.desktopSafariUserAgent
         let delegate = BrowserNavigationDelegate(browser: self)
         navigationDelegate = delegate
@@ -65,7 +75,16 @@ final class BrowserModel: ObservableObject {
         webView.uiDelegate = delegate
         webView.allowsBackForwardNavigationGestures = true
         webView.underPageBackgroundColor = .black
+        webView.onPresentationChange = { [weak self] attached in
+            if attached {
+                self?.prepareForPresentation()
+            } else {
+                self?.presentationID = UUID()
+                self?.isPresentationReady = false
+            }
+        }
         self.webView = webView
+        observeNavigation(in: webView)
         // WebKit starts popup navigation itself, using the supplied configuration.
         if suppliedConfiguration == nil { loadRequestedPage() }
         return webView
@@ -80,6 +99,7 @@ final class BrowserModel: ObservableObject {
             guard let self else { return }
             await restoreSessionIfNeeded()
             guard !Task.isCancelled, self.navigationRequestID == requestID, let webView else { return }
+            self.pendingNavigation = nil
             self.didStartLoading()
             if requestedURL.isFileURL {
                 webView.loadFileURL(requestedURL, allowingReadAccessTo: requestedURL.deletingLastPathComponent())
@@ -91,22 +111,83 @@ final class BrowserModel: ObservableObject {
 
     func close() {
         stopLoading()
+        discardPageSnapshot()
+        (webView as? BrowserAssetWebView)?.onPresentationChange = nil
         webView?.navigationDelegate = nil
         webView?.uiDelegate = nil
+        navigationDelegate = nil
+        navigationObservations.removeAll()
+        webView = nil
+        onSessionChange = nil
+        onSnapshotChange = nil
     }
 
     func stopLoading() {
         pendingNavigation?.cancel()
+        pendingNavigation = nil
+        submittedRequestID = nil
         webView?.stopLoading()
         isLoading = false
     }
 
     func captureVisiblePage() {
-        guard let webView, webView.bounds.width > 0, webView.bounds.height > 0 else { return }
-        webView.takeSnapshot(with: nil) { [weak self] image, _ in
-            guard let image else { return }
+        guard snapshotCaptureID == nil, !isLoading, let webView, webView.window != nil,
+              webView.bounds.width > 0, webView.bounds.height > 0 else { return }
+        let captureID = UUID()
+        let epoch = documentEpoch
+        snapshotCaptureID = captureID
+        let configuration = WKSnapshotConfiguration()
+        configuration.afterScreenUpdates = false
+        let longestSide = max(webView.bounds.width, webView.bounds.height)
+        configuration.snapshotWidth = NSNumber(value: Double(webView.bounds.width * min(1, 720 / longestSide)))
+        webView.takeSnapshot(with: configuration) { [weak self] image, _ in
             Task { @MainActor [weak self] in
-                self?.lastPageSnapshot = image
+                guard let self, self.snapshotCaptureID == captureID else { return }
+                self.snapshotCaptureID = nil
+                guard let image, self.documentEpoch == epoch else { return }
+                self.snapshotMemoryCost = image.representations.reduce(0) {
+                    $0 + max(1, $1.pixelsWide) * max(1, $1.pixelsHigh) * 4
+                }
+                self.snapshotCapturedAt = Date()
+                self.lastPageSnapshot = image
+                self.onSnapshotChange?()
+            }
+        }
+    }
+
+    func discardPageSnapshot() {
+        snapshotCaptureID = nil
+        snapshotMemoryCost = 0
+        snapshotCapturedAt = nil
+        lastPageSnapshot = nil
+    }
+
+    /// A tiny capture after screen updates confirms that the reattached view
+    /// has rendered. The SwiftUI surface supplies a short fallback on failure.
+    func prepareForPresentation() {
+        presentationID = UUID()
+        let presentation = presentationID
+        let epoch = documentEpoch
+        isPresentationReady = false
+        guard let webView, webView.window != nil else { return }
+        guard lastPageSnapshot != nil else {
+            isPresentationReady = true
+            return
+        }
+        DispatchQueue.main.async { [weak self, weak webView] in
+            guard let self, let webView, self.presentationID == presentation,
+                  webView.window != nil, webView.bounds.width > 0, webView.bounds.height > 0 else { return }
+            webView.layoutSubtreeIfNeeded()
+            let configuration = WKSnapshotConfiguration()
+            configuration.afterScreenUpdates = true
+            configuration.snapshotWidth = 16
+            webView.takeSnapshot(with: configuration) { [weak self, weak webView] image, _ in
+                guard image != nil else { return }
+                Task { @MainActor [weak self, weak webView] in
+                    guard let self, webView?.window != nil,
+                          self.presentationID == presentation, self.documentEpoch == epoch else { return }
+                    self.isPresentationReady = true
+                }
             }
         }
     }
@@ -127,18 +208,8 @@ final class BrowserModel: ObservableObject {
         let input = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return }
 
-        if let explicitURL = URL(string: input),
-           let scheme = explicitURL.scheme?.lowercased(),
-           (scheme == "http" || scheme == "https"),
-           explicitURL.host != nil {
-            navigate(to: explicitURL)
-            return
-        }
-
-        if !input.contains(" "),
-           let directURL = URL(string: "https://\(input)"),
-           directURL.host != nil {
-            navigate(to: directURL)
+        if let url = BrowserAddressInput.webURL(from: input) {
+            navigate(to: url)
             return
         }
 
@@ -148,6 +219,7 @@ final class BrowserModel: ObservableObject {
     }
 
     func navigate(to url: URL) {
+        discardPageSnapshot()
         requestedURL = url
         addressText = url.absoluteString
         errorMessage = nil
@@ -168,16 +240,32 @@ final class BrowserModel: ObservableObject {
 
     func reload() {
         if isLoading {
-            webView?.stopLoading()
+            stopLoading()
+        } else if let webView, webView.url != nil {
+            webView.reload()
         } else {
-            webView?.reload()
+            // Retry a first navigation that was stopped before WebKit loaded it.
+            navigationRequestID = UUID()
+            loadRequestedPage()
         }
     }
 
     func didStartLoading() {
+        discardPageSnapshot()
+        presentationID = UUID()
         documentEpoch = UUID()
         isLoading = true
         errorMessage = nil
+    }
+
+    func didBeginDownload() {
+        isLoading = false
+        // A download leaves the currently displayed page and its address intact.
+        if let url = webView?.url {
+            currentURL = url
+            requestedURL = url
+            addressText = url.absoluteString
+        }
     }
 
     func didCommitNavigation(url: URL?) {
@@ -187,7 +275,6 @@ final class BrowserModel: ObservableObject {
             requestedURL = url
             isEmpty = false
             library.recordLastVisitedURL(url)
-            scheduleSessionSave()
             onSessionChange?()
         }
     }
@@ -214,7 +301,6 @@ final class BrowserModel: ObservableObject {
 
         canGoBack = webView.canGoBack
         canGoForward = webView.canGoForward
-        scheduleSessionSave()
         onSessionChange?()
     }
 
@@ -235,6 +321,48 @@ final class BrowserModel: ObservableObject {
 
         if canGoForward != nextCanGoForward {
             canGoForward = nextCanGoForward
+        }
+    }
+
+    private func observeNavigation(in webView: WKWebView) {
+        let changed: (WKWebView) -> Void = { [weak self] webView in
+            // KVO can run inside WebKit/SwiftUI layout. Publish on the next
+            // actor turn instead of changing observable state during layout.
+            Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView, self.webView === webView else { return }
+                self.refreshMetadata(from: webView)
+            }
+        }
+        navigationObservations = [
+            webView.observe(\.title, options: [.new]) { view, _ in changed(view) },
+            webView.observe(\.url, options: [.new]) { view, _ in changed(view) },
+            webView.observe(\.canGoBack, options: [.new]) { view, _ in changed(view) },
+            webView.observe(\.canGoForward, options: [.new]) { view, _ in changed(view) }
+        ]
+    }
+
+    private func refreshMetadata(from webView: WKWebView) {
+        updateNavigationState(from: webView)
+        var changed = false
+        if let title = webView.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !title.isEmpty, pageTitle != title {
+            pageTitle = title
+            changed = true
+        }
+        // Full navigations use the commit/finish callbacks. This path handles
+        // history.pushState/replaceState and avoids overwriting a queued URL.
+        if !isLoading, !webView.isLoading, let url = webView.url, currentURL != url {
+            currentURL = url
+            requestedURL = url
+            addressText = url.absoluteString
+            library.recordLastVisitedURL(url)
+            changed = true
+        }
+        if changed {
+            if !isLoading, currentURL == webView.url, let url = currentURL {
+                library.recordVisit(url: url, title: pageTitle)
+            }
+            onSessionChange?()
         }
     }
 

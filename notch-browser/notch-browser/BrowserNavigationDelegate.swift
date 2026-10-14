@@ -2,11 +2,22 @@ import AppKit
 import WebKit
 
 @MainActor
-final class BrowserNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+final class BrowserNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDelegate {
     private weak var browserModel: BrowserModel?
-    private var downloadWebViews: [ObjectIdentifier: WKWebView] = [:]
-    init(browser: BrowserModel) {
+    private let downloads: BrowserDownloads
+    init(browser: BrowserModel, downloads: BrowserDownloads? = nil) {
         browserModel = browser
+        self.downloads = downloads ?? .shared
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        decisionHandler(BrowserDownloads.policy(for: navigationAction))
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        decisionHandler(BrowserDownloads.policy(for: navigationResponse))
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {
@@ -105,40 +116,9 @@ final class BrowserNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
         webView.reload()
     }
 
-    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
-                  suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = suggestedFilename
-        panel.canCreateDirectories = true
-        panel.isExtensionHidden = false
-
-        let finish: (URL?) -> Void = { [weak self] destination in
-            self?.downloadWebViews.removeValue(forKey: ObjectIdentifier(download))
-            completionHandler(destination)
-        }
-
-        if let window = downloadWebViews[ObjectIdentifier(download)]?.window {
-            panel.beginSheetModal(for: window) { response in
-                finish(response == .OK ? panel.url : nil)
-            }
-        } else if panel.runModal() == .OK {
-            finish(panel.url)
-        } else {
-            finish(nil)
-        }
-    }
-
-    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        downloadWebViews.removeValue(forKey: ObjectIdentifier(download))
-    }
-
-    func downloadDidFinish(_ download: WKDownload) {
-        downloadWebViews.removeValue(forKey: ObjectIdentifier(download))
-    }
-
     private func prepare(_ download: WKDownload, from webView: WKWebView) {
-        downloadWebViews[ObjectIdentifier(download)] = webView
-        download.delegate = self
+        browserModel?.didBeginDownload()
+        downloads.receive(download, from: webView)
     }
 
     private func presentJavaScriptDialog(in webView: WKWebView, title: String,

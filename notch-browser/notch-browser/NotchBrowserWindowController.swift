@@ -181,6 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var agentConnectionError: String? { agentServer?.startupError }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        tabs.persistSession()
         guard tabs.tabs.contains(where: { $0.webView != nil }) else { return .terminateNow }
 
         Task { @MainActor [weak self] in
@@ -201,13 +202,18 @@ final class NotchBrowserWindowController {
     private let activity: BrowserAgentActivity
     private let onOpen: () -> Void
     private let notchController = DynamicNotchWindowController()
+    private let surfaceAppearance = BrowserSurfaceAppearance()
     private var isExpanded = false
     private var isShowingOnboarding = false
     private var onboardingTask: Task<Void, Never>?
+    private var expandedScreen: NSScreen?
+    private var expandedWidth: CGFloat?
     private var expandedHeight: CGFloat?
     private struct ResizeContext {
         let screen: NSScreen?
-        let startHeight: CGFloat
+        let startSize: CGSize
+        let scale: CGFloat
+        let widthRange: ClosedRange<CGFloat>
         let heightRange: ClosedRange<CGFloat>
     }
     private var resizeContext: ResizeContext?
@@ -239,6 +245,7 @@ final class NotchBrowserWindowController {
             tabs.activeBrowser.captureVisiblePage()
         }
         isExpanded = false
+        surfaceAppearance.setExpanded(false, animated: animated)
         resizeContext = nil
         notchController.dismissalPolicy = .manual
 
@@ -275,6 +282,7 @@ final class NotchBrowserWindowController {
         isShowingOnboarding = false
         guard !isExpanded else { return }
         isExpanded = true
+        surfaceAppearance.setExpanded(true, animated: animated)
         // Install click-away handling after the opening hover/click has
         // finished. The compact hover target and expanded surface share one
         // panel; registering the monitor synchronously can treat the opening
@@ -284,8 +292,11 @@ final class NotchBrowserWindowController {
         let screen = NSScreen.main ?? NSScreen.screens.first
         let sizing = NotchBrowserSizing.resolved(
             for: screen,
+            expandedWidthOverride: expandedWidth,
             expandedHeightOverride: expandedHeight
         )
+        expandedScreen = screen
+        expandedWidth = sizing.expandedWidth
         expandedHeight = sizing.expandedHeight
         renderExpanded(sizing: sizing, on: screen,
                        animated: animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
@@ -320,8 +331,10 @@ final class NotchBrowserWindowController {
             let screen = NSScreen.main ?? NSScreen.screens.first
             let sizing = NotchBrowserSizing.resolved(
                 for: screen,
+                expandedWidthOverride: self.expandedWidth,
                 expandedHeightOverride: self.expandedHeight
             )
+            self.expandedWidth = sizing.expandedWidth
             self.expandedHeight = sizing.expandedHeight
             let presentationID = UUID()
             self.notchController.show(
@@ -361,7 +374,12 @@ final class NotchBrowserWindowController {
         resizeContext = nil
         notchController.dismissalPolicy = .manual
         let screen = NSScreen.main ?? NSScreen.screens.first
-        let sizing = NotchBrowserSizing.resolved(for: screen, expandedHeightOverride: expandedHeight)
+        let sizing = NotchBrowserSizing.resolved(
+            for: screen,
+            expandedWidthOverride: expandedWidth,
+            expandedHeightOverride: expandedHeight
+        )
+        expandedWidth = sizing.expandedWidth
         expandedHeight = sizing.expandedHeight
         let presentationID = UUID()
         notchController.show(
@@ -393,10 +411,10 @@ final class NotchBrowserWindowController {
         let collapse: () -> Void = { [weak self] in
             self?.showCompact()
         }
-        let resize: (CGFloat) -> Void = { [weak self] translation in
+        let resize: (CGSize) -> Void = { [weak self] translation in
             self?.resizeExpanded(by: translation)
         }
-        let resizeEnded: (CGFloat) -> Void = { [weak self] translation in
+        let resizeEnded: (CGSize) -> Void = { [weak self] translation in
             self?.finishResize(by: translation)
         }
 
@@ -408,7 +426,9 @@ final class NotchBrowserWindowController {
             shoulderRadius: sizing.expandedShoulderRadius,
             attachedEdgeRail: nil,
             background: .black,
-            bodyBackground: AnyView(BrowserTabsBackground(tabs: tabs, library: library)),
+            bodyBackground: AnyView(BrowserTabsBackground(
+                tabs: tabs, library: library, appearance: surfaceAppearance
+            )),
             contentInsets: EdgeInsets(),
             screen: screen,
             animated: animated
@@ -417,6 +437,7 @@ final class NotchBrowserWindowController {
                 tabs: tabs,
                 library: library,
                 activity: self.activity,
+                appearance: self.surfaceAppearance,
                 onCollapse: collapse,
                 onResize: resize,
                 onResizeEnded: resizeEnded
@@ -424,34 +445,50 @@ final class NotchBrowserWindowController {
         }
     }
 
-    private func resizeExpanded(by translation: CGFloat) {
+    private func resizeExpanded(by translation: CGSize) {
         guard isExpanded else { return }
 
         if resizeContext == nil {
-            let screen = NSScreen.main ?? NSScreen.screens.first
-            let sizing = NotchBrowserSizing.resolved(for: screen, expandedHeightOverride: expandedHeight)
+            let screen = expandedScreen ?? NSScreen.main ?? NSScreen.screens.first
+            let sizing = NotchBrowserSizing.resolved(
+                for: screen,
+                expandedWidthOverride: expandedWidth,
+                expandedHeightOverride: expandedHeight
+            )
             resizeContext = ResizeContext(
                 screen: screen,
-                startHeight: sizing.expandedHeight,
+                startSize: CGSize(width: sizing.expandedWidth, height: sizing.expandedHeight),
+                scale: screen?.backingScaleFactor ?? 1,
+                widthRange: sizing.expandedWidthRange,
                 heightRange: sizing.expandedHeightRange
             )
         }
         guard let resizeContext else { return }
-        let scale = resizeContext.screen?.backingScaleFactor ?? 1
-        let requestedHeight = ((resizeContext.startHeight + translation) * scale).rounded() / scale
+        let scale = resizeContext.scale
+        let requestedWidth = ((resizeContext.startSize.width + translation.width) * scale).rounded() / scale
+        let requestedHeight = ((resizeContext.startSize.height + translation.height) * scale).rounded() / scale
+        let width = min(max(requestedWidth, resizeContext.widthRange.lowerBound), resizeContext.widthRange.upperBound)
         let height = min(max(requestedHeight, resizeContext.heightRange.lowerBound), resizeContext.heightRange.upperBound)
-        guard height != expandedHeight else { return }
+        guard width != expandedWidth || height != expandedHeight else { return }
+        expandedWidth = width
         expandedHeight = height
         notchController.resize(
+            width: width,
             height: height,
             screen: resizeContext.screen,
             animated: false
         )
     }
 
-    private func finishResize(by translation: CGFloat) {
+    private func finishResize(by translation: CGSize) {
         resizeExpanded(by: translation)
 
+        if let expandedWidth {
+            UserDefaults.standard.set(
+                Double(expandedWidth),
+                forKey: NotchBrowserSizing.expandedWidthDefaultsKey
+            )
+        }
         if let expandedHeight {
             UserDefaults.standard.set(
                 Double(expandedHeight),

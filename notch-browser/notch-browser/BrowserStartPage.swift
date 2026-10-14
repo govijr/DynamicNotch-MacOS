@@ -2,6 +2,11 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum StartPageImageSource {
+    case photo
+    case desktopPictures
+}
+
 struct BrowserStartPage: View {
     @ObservedObject var browser: BrowserModel
     @ObservedObject var library: BrowserLibrary
@@ -9,6 +14,7 @@ struct BrowserStartPage: View {
     @State private var isEditingFavorite = false
     @State private var favoriteToEdit: BrowserBookmark?
     @State private var isChoosingBackgroundImage = false
+    @State private var backgroundImageSource: StartPageImageSource = .photo
     @State private var backgroundImageError: String?
 
     var body: some View {
@@ -136,8 +142,9 @@ struct BrowserStartPage: View {
                 .accessibilityLabel("Customize start page background")
                 .disabled(library.isImportingBackground)
                 .popover(isPresented: $isEditingBackground, arrowEdge: .bottom) {
-                    StartPageBackgroundPicker(library: library) {
+                    StartPageBackgroundPicker(library: library) { source in
                         isEditingBackground = false
+                        backgroundImageSource = source
                         isChoosingBackgroundImage = true
                     }
                 }
@@ -150,7 +157,8 @@ struct BrowserStartPage: View {
         .foregroundStyle(.white)
         .preferredColorScheme(.dark)
         .background {
-            StartPageImagePicker(library: library, isPresented: $isChoosingBackgroundImage, errorMessage: $backgroundImageError)
+            StartPageImagePicker(library: library, source: backgroundImageSource,
+                                 isPresented: $isChoosingBackgroundImage, errorMessage: $backgroundImageError)
                 .frame(width: 0, height: 0)
                 .allowsHitTesting(false)
         }
@@ -238,11 +246,6 @@ struct StartPageBackground: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
-            .overlay(Color.black.opacity(selection == .custom ? 0.25 : 0))
-            .overlay {
-                LinearGradient(colors: [.black.opacity(0.12), .black.opacity(selection == .custom ? 0.6 : 0.26)],
-                               startPoint: .top, endPoint: .bottom)
-            }
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -300,7 +303,7 @@ private struct StartPageSiteIcon: View {
 
 private struct StartPageBackgroundPicker: View {
     @ObservedObject var library: BrowserLibrary
-    let onChooseImage: () -> Void
+    let onChooseImage: (StartPageImageSource) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -331,7 +334,15 @@ private struct StartPageBackgroundPicker: View {
                     .accessibilityAddTraits(library.startBackground == background ? .isSelected : [])
                 }
             }
-            Button(action: onChooseImage) {
+            Button { onChooseImage(.desktopPictures) } label: {
+                Label("Desktop Pictures…", systemImage: "desktopcomputer")
+                    .font(.system(size: 12, weight: .medium))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
+                    .contentShape(Rectangle())
+            }
+            Button { onChooseImage(.photo) } label: {
                 Label("Choose Your Own Image…", systemImage: "photo.badge.plus")
                     .font(.system(size: 12, weight: .medium))
                     .frame(maxWidth: .infinity)
@@ -353,6 +364,7 @@ private struct StartPageBackgroundPicker: View {
 // wallpaper popover, and attach it to the exact window that hosts this view.
 private struct StartPageImagePicker: NSViewRepresentable {
     let library: BrowserLibrary
+    let source: StartPageImageSource
     @Binding var isPresented: Bool
     @Binding var errorMessage: String?
 
@@ -402,10 +414,13 @@ private struct StartPageImagePicker: NSViewRepresentable {
                 guard parent.isPresented, let window, window.isVisible else { return }
                 let panel = NSOpenPanel()
                 self.panel = panel
-                panel.title = "Choose a Start Page Background"
-                panel.allowedContentTypes = [.image]
+                panel.title = parent.source == .desktopPictures ? "Choose a Desktop Picture" : "Choose a Start Page Background"
+                panel.allowedContentTypes = BrowserBackgroundImage.allowedContentTypes
                 panel.canChooseDirectories = false
                 panel.allowsMultipleSelection = false
+                if parent.source == .desktopPictures {
+                    panel.directoryURL = BrowserBackgroundImage.desktopPicturesDirectory
+                }
                 panel.level = window.level
                 NSApp.activate(ignoringOtherApps: true)
                 window.makeKeyAndOrderFront(nil)
@@ -418,6 +433,8 @@ private struct StartPageImagePicker: NSViewRepresentable {
                         do {
                             try await self.parent.library.setCustomBackground(from: url)
                             self.parent.errorMessage = nil
+                        } catch let error as BrowserBackgroundImageError {
+                            self.parent.errorMessage = error.localizedDescription
                         } catch {
                             self.parent.errorMessage = "This image couldn’t be opened. Try another photo."
                         }

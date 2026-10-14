@@ -4,12 +4,15 @@ import AppKit
 /// AppKit reports these values in logical points; they must not be inferred
 /// from a screenshot's backing pixels.
 struct NotchBrowserSizing {
+    static let expandedWidthDefaultsKey = "notchBrowser.expandedWidth"
     static let expandedHeightDefaultsKey = "notchBrowser.expandedHeight"
+    static let minimumExpandedWidth: CGFloat = 600
     static let minimumExpandedHeight: CGFloat = 360
     static let maximumExpandedHeight: CGFloat = 760
 
     let surfaceWidth: CGFloat
     let expandedWidth: CGFloat
+    let expandedWidthRange: ClosedRange<CGFloat>
     let compactHeight: CGFloat
     let expandedHeight: CGFloat
     let expandedHeightRange: ClosedRange<CGFloat>
@@ -20,6 +23,7 @@ struct NotchBrowserSizing {
 
     static func resolved(
         for screen: NSScreen?,
+        expandedWidthOverride: CGFloat? = nil,
         expandedHeightOverride: CGFloat? = nil
     ) -> Self {
         let display = screen ?? NSScreen.main ?? NSScreen.screens.first
@@ -41,9 +45,19 @@ struct NotchBrowserSizing {
             : 240
         let widthLimit = max(380, frame.width - 80)
         let surfaceWidth = min(max(240, widthFromNotch), widthLimit)
-        let expandedWidth = min(
+        let defaultExpandedWidth = min(
             max(surfaceWidth, frame.width * 0.70),
             widthLimit
+        )
+        let minimumExpandedWidth = min(max(Self.minimumExpandedWidth, surfaceWidth), widthLimit)
+        let expandedWidthRange = minimumExpandedWidth...widthLimit
+        let storedExpandedWidth = UserDefaults.standard
+            .object(forKey: Self.expandedWidthDefaultsKey) as? Double
+        let requestedExpandedWidth = expandedWidthOverride
+            ?? CGFloat(storedExpandedWidth ?? Double(defaultExpandedWidth))
+        let expandedWidth = min(
+            max(requestedExpandedWidth, expandedWidthRange.lowerBound),
+            expandedWidthRange.upperBound
         )
 
         // Match the display's menu-bar/camera rail rather than a fixed
@@ -74,6 +88,7 @@ struct NotchBrowserSizing {
         return Self(
             surfaceWidth: surfaceWidth,
             expandedWidth: expandedWidth,
+            expandedWidthRange: expandedWidthRange,
             compactHeight: compactHeight,
             expandedHeight: expandedHeight,
             expandedHeightRange: expandedHeightRange,

@@ -117,12 +117,77 @@ enum BrowserSessionError: LocalizedError {
     }
 }
 
+struct BrowserCookieBackup: Sendable {
+    let load: @Sendable () throws -> Data?
+    let save: @Sendable (Data, Bool) throws -> Void
+    let remove: @Sendable () throws -> Void
+
+    static let keychain = BrowserCookieBackup(
+        load: {
+            try BrowserKeychainAccess.perform(allowInteraction: false) { try BrowserSessionKeychain.load() }
+        },
+        save: { data, allowInteraction in
+            try BrowserKeychainAccess.perform(allowInteraction: allowInteraction) { try BrowserSessionKeychain.save(data) }
+        },
+        remove: {
+            try BrowserKeychainAccess.perform(allowInteraction: true) { BrowserSessionKeychain.remove() }
+        }
+    )
+}
+
+/// Serializes encoding and backup I/O off the UI actor. A sequence prevents
+/// overlapping cookie reads from committing an older snapshot after a new one.
+private actor BrowserCookieBackupWriter {
+    private let backup: BrowserCookieBackup
+    private var lastSavedData: Data?
+    private var lastSequence = 0
+    private(set) var generation = 0
+
+    init(backup: BrowserCookieBackup) { self.backup = backup }
+
+    func loadRecords() throws -> [BrowserCookieRecord] {
+        guard let data = try backup.load() else { return [] }
+        let records = try JSONDecoder().decode([BrowserCookieRecord].self, from: data)
+        lastSavedData = data
+        // WebKit owns persistent cookies. The extra backup only keeps session
+        // cookies, and must not resurrect persistent cookies deleted by a site.
+        return records.filter { $0.expiresAt == nil }
+    }
+
+    func save(_ records: [BrowserCookieRecord], generation: Int, sequence: Int,
+              allowInteraction: Bool) throws -> Int {
+        guard generation == self.generation else { throw CancellationError() }
+        guard sequence >= lastSequence else { return records.count }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(records.sorted { $0.storageKey < $1.storageKey })
+        if data != lastSavedData || allowInteraction {
+            try backup.save(data, allowInteraction)
+            lastSavedData = data
+        }
+        lastSequence = sequence
+        return records.count
+    }
+
+    func forget() throws {
+        generation += 1
+        lastSequence = 0
+        lastSavedData = nil
+        try backup.remove()
+    }
+}
+
 @MainActor
 final class BrowserSessionStore {
     let websiteDataStore: WKWebsiteDataStore
+    private let cookieStore: WKHTTPCookieStore
+    private let backupWriter: BrowserCookieBackupWriter
+    private var saveSequence = 0
 
-    init(websiteDataStore: WKWebsiteDataStore) {
+    init(websiteDataStore: WKWebsiteDataStore, backup: BrowserCookieBackup = .keychain) {
         self.websiteDataStore = websiteDataStore
+        cookieStore = websiteDataStore.httpCookieStore
+        backupWriter = BrowserCookieBackupWriter(backup: backup)
     }
 
     static func discoverChromeProfiles() -> [BrowserChromeProfile] {
@@ -132,13 +197,7 @@ final class BrowserSessionStore {
     func restoreSavedCookies() async throws -> Int {
         // WebKit's persistent store remains available when a legacy backup
         // cannot be read silently. Startup must never wait on a password dialog.
-        let savedData = try await Task.detached(priority: .utility) {
-            try BrowserKeychainAccess.perform(allowInteraction: false) {
-                try BrowserSessionKeychain.load()
-            }
-        }.value
-        guard let data = savedData else { return 0 }
-        let records = try JSONDecoder().decode([BrowserCookieRecord].self, from: data)
+        let records = try await backupWriter.loadRecords()
         guard !records.isEmpty else { return 0 }
 
         let existingKeys = Set(await allCookies().compactMap(BrowserCookieRecord.init).map(\.storageKey))
@@ -147,14 +206,13 @@ final class BrowserSessionStore {
     }
 
     func saveCookies(allowInteraction: Bool = false) async throws -> Int {
-        let records = await allCookies().compactMap(BrowserCookieRecord.init)
-        let data = try JSONEncoder().encode(records)
-        try await Task.detached(priority: .utility) {
-            try BrowserKeychainAccess.perform(allowInteraction: allowInteraction) {
-                try BrowserSessionKeychain.save(data)
-            }
-        }.value
-        return records.count
+        saveSequence += 1
+        let sequence = saveSequence
+        let generation = await backupWriter.generation
+        let records = await allCookies().compactMap(BrowserCookieRecord.init).filter { $0.expiresAt == nil }
+        try Task.checkCancellation()
+        return try await backupWriter.save(records, generation: generation, sequence: sequence,
+                                           allowInteraction: allowInteraction)
     }
 
     func importChromeCookies(from url: URL) async throws -> BrowserCookieImportResult {
@@ -169,15 +227,13 @@ final class BrowserSessionStore {
         )
     }
 
-    func forgetSavedCookies() {
-        try? BrowserKeychainAccess.perform(allowInteraction: true) {
-            BrowserSessionKeychain.remove()
-        }
+    func forgetSavedCookies() async throws {
+        try await backupWriter.forget()
     }
 
     private func allCookies() async -> [HTTPCookie] {
         await withCheckedContinuation { continuation in
-            websiteDataStore.httpCookieStore.getAllCookies { cookies in
+            cookieStore.getAllCookies { cookies in
                 continuation.resume(returning: cookies)
             }
         }
@@ -190,7 +246,7 @@ final class BrowserSessionStore {
             guard let cookie = record.cookie else { continue }
 
             await withCheckedContinuation { continuation in
-                websiteDataStore.httpCookieStore.setCookie(cookie) {
+                cookieStore.setCookie(cookie) {
                     continuation.resume()
                 }
             }

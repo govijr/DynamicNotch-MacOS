@@ -33,9 +33,9 @@ def compile_tools():
     (app / "Contents/Info.plist").write_text('''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.govi.notch-browser.agent-tests</string><key>CFBundleExecutable</key><string>AgentHarness</string><key>CFBundlePackageType</key><string>APPL</string><key>LSUIElement</key><true/></dict></plist>''')
-    sources = ["BrowserModel", "BrowserTabsModel", "BrowserNavigationDelegate", "BrowserAgentActivity", "BrowserAgentDOM", "BrowserAgentController", "BrowserAgentSocket", "BrowserAgentServer"]
+    sources = ["BrowserAddressInput", "BrowserModel", "BrowserTabsModel", "BrowserNavigationDelegate", "BrowserDownloads", "BrowserAssetWebView", "BrowserAgentActivity", "BrowserAgentDOM", "BrowserAgentController", "BrowserAgentSocket", "BrowserAgentServer"]
     command = ["xcrun", "swiftc", "-swift-version", "5", "-parse-as-library", "-module-cache-path", str(BUILD / "module-cache"),
-               str(TOOLS / "Tests/Harness.swift")]
+               str(TOOLS / "Tests/FixtureBrowserLibrary.swift"), str(TOOLS / "Tests/Harness.swift")]
     command += [str(APP_SOURCES / (name + ".swift")) for name in sources]
     command += ["-o", str(executable)]
     subprocess.run(command, check=True)

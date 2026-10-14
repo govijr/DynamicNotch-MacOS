@@ -6,23 +6,6 @@ import WebKit
 // lifecycle with an ephemeral data store. It never reads real login cookies,
 // license keys, or the user's saved browsing session.
 @MainActor
-final class BrowserLibrary {
-    static let shared = BrowserLibrary()
-    let websiteDataStore = WKWebsiteDataStore.nonPersistent()
-    var lastVisitedURL: URL? { nil }
-    let searchEngine = FixtureSearchEngine()
-    func restoreSessionIfNeeded() async {}
-    func scheduleSessionSave() {}
-    func saveSessionAndWait(updateStatus: Bool) async {}
-    func recordLastVisitedURL(_ url: URL) {}
-}
-
-struct FixtureSearchEngine {
-    var homepageURL: URL { URL(string: "about:blank")! }
-    func searchURL(for query: String) -> URL? { nil }
-}
-
-@MainActor
 final class HarnessDelegate: NSObject, NSApplicationDelegate {
     var tabs: BrowserTabsModel!
     let activity = BrowserAgentActivity()

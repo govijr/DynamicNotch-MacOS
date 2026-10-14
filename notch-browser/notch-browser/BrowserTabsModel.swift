@@ -11,10 +11,38 @@ final class BrowserTabsModel: ObservableObject {
     private let library: BrowserLibrary
     private let defaults: UserDefaults
     private static let sessionKey = "notchBrowser.openTabs.v1"
+    static let snapshotCountLimit = 3
+    static let snapshotByteLimit = 16 * 1024 * 1024
+    private var pendingSessionPersistence: Task<Void, Never>?
 
+    private struct SavedTab: Codable {
+        var url: String?
+        var title: String?
+    }
     private struct SavedSession: Codable {
-        var urls: [String?]
+        var tabs: [SavedTab]
         var activeIndex: Int
+
+        private enum CodingKeys: String, CodingKey { case tabs, urls, activeIndex }
+        init(tabs: [SavedTab], activeIndex: Int) {
+            self.tabs = tabs
+            self.activeIndex = activeIndex
+        }
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            activeIndex = try values.decode(Int.self, forKey: .activeIndex)
+            if let tabs = try values.decodeIfPresent([SavedTab].self, forKey: .tabs) {
+                self.tabs = tabs
+            } else {
+                // Preserve ordered tabs from the original URL-only session.
+                tabs = try values.decode([String?].self, forKey: .urls).map { SavedTab(url: $0, title: nil) }
+            }
+        }
+        func encode(to encoder: Encoder) throws {
+            var values = encoder.container(keyedBy: CodingKeys.self)
+            try values.encode(tabs, forKey: .tabs)
+            try values.encode(activeIndex, forKey: .activeIndex)
+        }
     }
 
     var activeBrowser: BrowserModel {
@@ -27,13 +55,14 @@ final class BrowserTabsModel: ObservableObject {
 
         if let data = defaults.data(forKey: Self.sessionKey),
            let saved = try? JSONDecoder().decode(SavedSession.self, from: data),
-           !saved.urls.isEmpty {
-            let restoredTabs = saved.urls.map { urlString in
-                let url = urlString.flatMap { URL(string: $0) }.flatMap(Self.validWebURL)
+           !saved.tabs.isEmpty {
+            let restoredTabs = saved.tabs.map { savedTab in
+                let url = savedTab.url.flatMap { URL(string: $0) }.flatMap(Self.validWebURL)
                 return BrowserModel(
                     library: library,
                     startsEmpty: url == nil,
-                    initialURL: url
+                    initialURL: url,
+                    restoredTitle: savedTab.title
                 )
             }
             tabs = restoredTabs
@@ -110,13 +139,45 @@ final class BrowserTabsModel: ObservableObject {
             return self.createPopupTab(configuration: configuration)
         }
         browser.onSessionChange = { [weak self] in
-            self?.persistSession()
+            self?.scheduleSessionPersistence()
+        }
+        browser.onSnapshotChange = { [weak self] in
+            self?.trimPageSnapshots()
         }
     }
 
-    private func persistSession() {
+    private func trimPageSnapshots() {
+        let snapshots = tabs.filter { $0.lastPageSnapshot != nil }.sorted {
+            if ($0.id == activeTabID) != ($1.id == activeTabID) { return $0.id == activeTabID }
+            return ($0.snapshotCapturedAt ?? .distantPast) > ($1.snapshotCapturedAt ?? .distantPast)
+        }
+        var count = 0
+        var bytes = 0
+        for browser in snapshots {
+            if count < Self.snapshotCountLimit && bytes + browser.snapshotMemoryCost <= Self.snapshotByteLimit {
+                count += 1
+                bytes += browser.snapshotMemoryCost
+            } else {
+                browser.discardPageSnapshot()
+            }
+        }
+    }
+
+    private func scheduleSessionPersistence() {
+        guard pendingSessionPersistence == nil else { return }
+        pendingSessionPersistence = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.pendingSessionPersistence = nil
+            self.persistSession()
+        }
+    }
+
+    func persistSession() {
+        pendingSessionPersistence?.cancel()
+        pendingSessionPersistence = nil
         let saved = SavedSession(
-            urls: tabs.map { $0.requestedURL?.absoluteString },
+            tabs: tabs.map { SavedTab(url: $0.requestedURL?.absoluteString, title: $0.isEmpty ? nil : $0.pageTitle) },
             activeIndex: tabs.firstIndex { $0.id == activeTabID } ?? 0
         )
         guard let data = try? JSONEncoder().encode(saved) else { return }

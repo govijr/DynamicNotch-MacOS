@@ -7,10 +7,12 @@ struct BrowserWebView: NSViewRepresentable {
     @ObservedObject var browser: BrowserModel
 
     func makeNSView(context: Context) -> WKWebView {
-        browser.ensureWebView()
+        let webView = browser.ensureWebView()
+        browser.prepareForPresentation()
+        return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        browser.updateNavigationState(from: webView)
+        // Navigation metadata is observed by the model, outside SwiftUI layout.
     }
 }

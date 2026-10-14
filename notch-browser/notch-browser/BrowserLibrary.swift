@@ -1,8 +1,6 @@
 import AppKit
 import Combine
 import Foundation
-import ImageIO
-import UniformTypeIdentifiers
 import WebKit
 
 enum BrowserSearchEngine: String, CaseIterable, Codable, Identifiable {
@@ -87,6 +85,7 @@ final class BrowserLibrary: ObservableObject {
     static let shared = BrowserLibrary()
 
     let websiteDataStore: WKWebsiteDataStore
+    private let cookieStore: WKHTTPCookieStore
 
     @Published var searchEngine: BrowserSearchEngine {
         didSet {
@@ -112,6 +111,12 @@ final class BrowserLibrary: ObservableObject {
     private let sessionStore: BrowserSessionStore
     private var sessionRestoreTask: Task<Void, Never>?
     private var pendingSessionSave: Task<Void, Never>?
+    private var activeSessionSave: Task<Void, Never>?
+    private var activeSessionSaveID: UUID?
+    private var cookieObserver: BrowserCookieObserver?
+    private var cookieRevision = 0
+    private var savedCookieRevision = 0
+    private var automaticSessionBackupEnabled = true
 
     private static let searchEngineKey = "notchBrowser.searchEngine"
     private static let bookmarksKey = "notchBrowser.bookmarks"
@@ -121,7 +126,8 @@ final class BrowserLibrary: ObservableObject {
     private static let importOnboardingKey = "notchBrowser.importOnboarding.completed.v1"
     private let backgroundFileURL: URL
 
-    init(defaults: UserDefaults = .standard, backgroundFileURL: URL? = nil) {
+    init(defaults: UserDefaults = .standard, backgroundFileURL: URL? = nil,
+         websiteDataStore suppliedStore: WKWebsiteDataStore? = nil, cookieBackup: BrowserCookieBackup = .keychain) {
         self.defaults = defaults
         hasCompletedImportOnboarding = defaults.bool(forKey: Self.importOnboardingKey)
         self.backgroundFileURL = backgroundFileURL ?? FileManager.default
@@ -138,9 +144,10 @@ final class BrowserLibrary: ObservableObject {
             recentlyVisited = []
         }
 
-        let websiteDataStore = WKWebsiteDataStore.default()
+        let websiteDataStore = suppliedStore ?? WKWebsiteDataStore.default()
         self.websiteDataStore = websiteDataStore
-        self.sessionStore = BrowserSessionStore(websiteDataStore: websiteDataStore)
+        self.cookieStore = websiteDataStore.httpCookieStore
+        self.sessionStore = BrowserSessionStore(websiteDataStore: websiteDataStore, backup: cookieBackup)
 
         let storedSearchEngine = defaults.string(forKey: Self.searchEngineKey)
         searchEngine = BrowserSearchEngine(rawValue: storedSearchEngine ?? "") ?? .duckDuckGo
@@ -156,6 +163,16 @@ final class BrowserLibrary: ObservableObject {
             lastVisitedURL = URL(string: lastVisitedURLString)
         } else {
             lastVisitedURL = nil
+        }
+        let observer = BrowserCookieObserver { [weak self] in self?.scheduleSessionSave() }
+        cookieObserver = observer
+        cookieStore.add(observer)
+    }
+
+    deinit {
+        if let cookieObserver {
+            let store = cookieStore
+            Task { @MainActor in store.remove(cookieObserver) }
         }
     }
 
@@ -215,40 +232,11 @@ final class BrowserLibrary: ObservableObject {
         defer { isImportingBackground = false }
         let destination = backgroundFileURL
         let data = try await Task.detached(priority: .userInitiated) {
-            try Self.prepareBackground(from: url, destination: destination)
+            try BrowserBackgroundImage.prepare(from: url, destination: destination)
         }.value
         guard let image = NSImage(data: data) else { throw CocoaError(.fileReadCorruptFile) }
         customBackgroundImage = image
         startBackground = .custom
-    }
-
-    nonisolated private static func prepareBackground(from url: URL, destination: URL) throws -> Data {
-        let hasAccess = url.startAccessingSecurityScopedResource()
-        defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
-        // ImageIO downsamples during decoding rather than allocating a full
-        // resolution photo and then drawing it on the interface thread.
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
-              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: 2400,
-                kCGImageSourceShouldCacheImmediately: true
-              ] as CFDictionary) else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        let output = NSMutableData()
-        guard let encoder = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        CGImageDestinationAddImage(encoder, image, [
-            kCGImageDestinationLossyCompressionQuality: 0.88,
-            kCGImageDestinationBackgroundColor: CGColor(gray: 0, alpha: 1)
-        ] as CFDictionary)
-        guard CGImageDestinationFinalize(encoder) else { throw CocoaError(.fileWriteUnknown) }
-        let data = output as Data
-        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try data.write(to: destination, options: .atomic)
-        return data
     }
 
     private func persistHistory() {
@@ -319,6 +307,7 @@ final class BrowserLibrary: ObservableObject {
             }
 
             isRestoringSession = false
+            if cookieRevision != savedCookieRevision { queueSessionSave() }
         }
 
         self.sessionRestoreTask = sessionRestoreTask
@@ -326,33 +315,57 @@ final class BrowserLibrary: ObservableObject {
     }
 
     func scheduleSessionSave() {
-        pendingSessionSave?.cancel()
+        cookieRevision += 1
+        print("Cookie test revision \(cookieRevision), saved \(savedCookieRevision), queued \(pendingSessionSave != nil), restoring \(isRestoringSession)")
+        queueSessionSave()
+    }
+
+    private func queueSessionSave() {
+        guard automaticSessionBackupEnabled, !isRestoringSession, pendingSessionSave == nil else { return }
         pendingSessionSave = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            guard !Task.isCancelled else { return }
-            await self?.saveSessionAndWait(updateStatus: false)
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.pendingSessionSave = nil
+            await self.saveSessionAndWait(updateStatus: false)
         }
     }
 
     func saveSessionNow() {
+        automaticSessionBackupEnabled = true
         pendingSessionSave?.cancel()
-        pendingSessionSave = Task { @MainActor [weak self] in
+        pendingSessionSave = nil
+        Task { @MainActor [weak self] in
             await self?.saveSessionAndWait(updateStatus: true)
         }
     }
 
     func saveSessionAndWait(updateStatus: Bool) async {
-        do {
-            let cookieCount = try await sessionStore.saveCookies(allowInteraction: updateStatus)
-            if updateStatus {
-                sessionStatus = cookieCount > 0
-                    ? "Session saved securely"
-                    : "No session cookies to save yet"
+        print("Cookie test save \(updateStatus), revision \(cookieRevision), saved \(savedCookieRevision), active \(activeSessionSave != nil)")
+        if let activeSessionSave {
+            await activeSessionSave.value
+            if !updateStatus && cookieRevision == savedCookieRevision { return }
+        }
+        guard updateStatus || cookieRevision != savedCookieRevision else { return }
+        let revision = cookieRevision
+        let saveID = UUID()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let cookieCount = try await sessionStore.saveCookies(allowInteraction: updateStatus)
+                savedCookieRevision = max(savedCookieRevision, revision)
+                if updateStatus {
+                    sessionStatus = cookieCount > 0 ? "Session saved securely" : "No session cookies to save yet"
+                }
+            } catch {
+                if updateStatus { sessionStatus = "Session could not be saved" }
             }
-        } catch {
-            if updateStatus {
-                sessionStatus = "Session could not be saved"
-            }
+        }
+        activeSessionSave = task
+        activeSessionSaveID = saveID
+        await task.value
+        if activeSessionSaveID == saveID {
+            activeSessionSave = nil
+            activeSessionSaveID = nil
         }
     }
 
@@ -386,6 +399,7 @@ final class BrowserLibrary: ObservableObject {
             }
         }
         if includeCookies {
+            automaticSessionBackupEnabled = true
             do {
                 await restoreSessionIfNeeded()
                 let result = try await sessionStore.importChromeCookies(from: profile.cookieDatabaseURL)
@@ -438,9 +452,20 @@ final class BrowserLibrary: ObservableObject {
     }
 
     func forgetSavedSession() {
+        automaticSessionBackupEnabled = false
         pendingSessionSave?.cancel()
-        sessionStore.forgetSavedCookies()
-        sessionStatus = "Saved session forgotten"
+        pendingSessionSave = nil
+        activeSessionSave?.cancel()
+        activeSessionSave = nil
+        activeSessionSaveID = nil
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await sessionStore.forgetSavedCookies()
+                savedCookieRevision = cookieRevision
+                sessionStatus = "Saved session forgotten"
+            } catch { sessionStatus = "Saved session could not be forgotten" }
+        }
     }
 
     private func persistBookmarks() {
@@ -457,5 +482,13 @@ final class BrowserLibrary: ObservableObject {
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         components?.fragment = nil
         return components?.url?.absoluteString ?? url.absoluteString
+    }
+}
+
+private final class BrowserCookieObserver: NSObject, WKHTTPCookieStoreObserver {
+    private let onChange: @MainActor () -> Void
+    init(onChange: @escaping @MainActor () -> Void) { self.onChange = onChange }
+    func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
+        Task { @MainActor [weak self] in self?.onChange() }
     }
 }

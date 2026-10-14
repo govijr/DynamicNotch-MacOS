@@ -1,13 +1,17 @@
 import AppKit
+import Combine
+import DynamicNotch
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct BrowserTabsView: View {
     @ObservedObject var tabs: BrowserTabsModel
     @ObservedObject var library: BrowserLibrary
     @ObservedObject var activity: BrowserAgentActivity
+    @ObservedObject var appearance: BrowserSurfaceAppearance
     let onCollapse: () -> Void
-    let onResize: (CGFloat) -> Void
-    let onResizeEnded: (CGFloat) -> Void
+    let onResize: (CGSize) -> Void
+    let onResizeEnded: (CGSize) -> Void
 
     var body: some View {
         ContentView(
@@ -15,6 +19,7 @@ struct BrowserTabsView: View {
             tabs: tabs,
             library: library,
             activity: activity,
+            appearance: appearance,
             onCollapse: onCollapse,
             onResize: onResize,
             onResizeEnded: onResizeEnded
@@ -23,14 +28,29 @@ struct BrowserTabsView: View {
     }
 }
 
-/// The start-page image paints the whole notch body, underneath the content
-/// rails that keep controls clear of the curved edges.
+@MainActor
+final class BrowserSurfaceAppearance: ObservableObject {
+    @Published private(set) var backgroundOpacity: Double = 0
+
+    func setExpanded(_ expanded: Bool, animated: Bool) {
+        let animation: Animation? = animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            ? .easeInOut(duration: 0.30) : nil
+        withAnimation(animation) {
+            backgroundOpacity = expanded ? 1 : 0
+        }
+    }
+}
+
+/// The start-page image covers the whole notch, including the screen edge.
+/// Its opacity fades during collapse while the existing surface is retained.
 struct BrowserTabsBackground: View {
     @ObservedObject var tabs: BrowserTabsModel
     @ObservedObject var library: BrowserLibrary
+    @ObservedObject var appearance: BrowserSurfaceAppearance
 
     var body: some View {
         BrowserSurfaceBackground(browser: tabs.activeBrowser, library: library)
+            .opacity(appearance.backgroundOpacity)
     }
 }
 
@@ -52,14 +72,17 @@ struct ContentView: View {
     @ObservedObject var tabs: BrowserTabsModel
     @ObservedObject var library: BrowserLibrary
     @ObservedObject var activity: BrowserAgentActivity
+    @ObservedObject var appearance: BrowserSurfaceAppearance
+    @Environment(\.dynamicNotchSafeContentInsets) private var safeContentInsets
     let onCollapse: () -> Void
-    let onResize: (CGFloat) -> Void
-    let onResizeEnded: (CGFloat) -> Void
+    let onResize: (CGSize) -> Void
+    let onResizeEnded: (CGSize) -> Void
     @State private var isRevealed = false
     @State private var isPageSnapshotVisible = true
     @State private var snapshotRevealTask: Task<Void, Never>?
 
     private var isChromeVisible: Bool { tabs.isChromeVisible }
+    private var isEmbeddedPage: Bool { !isChromeVisible && !browser.isEmpty }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -97,6 +120,7 @@ struct ContentView: View {
                         Image(systemName: "eye")
                             .font(.system(size: 12, weight: .medium))
                             .frame(width: 28, height: 28)
+                            .background(.black.opacity(0.35), in: Circle())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.white)
@@ -104,41 +128,62 @@ struct ContentView: View {
                     .help("Show browser controls")
                     .accessibilityLabel("Show browser controls")
                 }
-                .padding(.top, 5)
-                .padding(.trailing, 5)
+                .padding(.top, 5 + (isEmbeddedPage ? safeContentInsets.top : 0))
+                .padding(.trailing, 5 + (isEmbeddedPage ? safeContentInsets.trailing : 0))
                 .transition(.opacity)
             }
         }
         .foregroundStyle(.white)
-        .opacity(isRevealed ? 1 : 0)
+        .opacity(isRevealed ? appearance.backgroundOpacity : 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.24), value: isChromeVisible)
-        .overlay(alignment: .bottom) {
+        .overlay(alignment: .bottomLeading) {
             BrowserResizeHandle(
+                corner: .bottomLeft,
                 foreground: .white,
                 onResize: onResize,
                 onResizeEnded: onResizeEnded
             )
+            .shadow(color: .black.opacity(isEmbeddedPage ? 0.45 : 0), radius: 1)
+            .padding(.leading, isEmbeddedPage ? safeContentInsets.leading : 0)
             .padding(.bottom, 4)
         }
+        .overlay(alignment: .bottomTrailing) {
+            BrowserResizeHandle(
+                corner: .bottomRight,
+                foreground: .white,
+                onResize: onResize,
+                onResizeEnded: onResizeEnded
+            )
+            .shadow(color: .black.opacity(isEmbeddedPage ? 0.45 : 0), radius: 1)
+            .padding(.trailing, isEmbeddedPage ? safeContentInsets.trailing : 0)
+            .padding(.bottom, 4)
+        }
+        .dynamicNotchEdgeToEdgeContent(isEmbeddedPage)
         .onAppear {
             withAnimation(.easeOut(duration: 0.18)) {
                 isRevealed = true
             }
-        }
-        .onReceive(browser.$lastPageSnapshot) { snapshot in
-            guard snapshot != nil, isPageSnapshotVisible else { return }
+            browser.prepareForPresentation()
             snapshotRevealTask?.cancel()
             snapshotRevealTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 700_000_000)
+                try? await Task.sleep(nanoseconds: 200_000_000)
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.14)) {
-                    isPageSnapshotVisible = false
-                }
+                revealLivePage()
             }
+        }
+        .onReceive(browser.$isPresentationReady) { ready in
+            if ready && isRevealed { revealLivePage() }
         }
         .onDisappear {
             snapshotRevealTask?.cancel()
+        }
+    }
+
+    private func revealLivePage() {
+        snapshotRevealTask?.cancel()
+        withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: 0.10)) {
+            isPageSnapshotVisible = false
         }
     }
 
@@ -177,6 +222,8 @@ struct ContentView: View {
             .help("Hide browser controls")
             .accessibilityLabel("Hide browser controls")
 
+            BrowserDownloadsButton()
+
             Button(action: onCollapse) {
                 Image(systemName: "chevron.up")
                     .frame(width: 24, height: 24)
@@ -205,6 +252,14 @@ struct ContentView: View {
     private var newTabPage: some View {
         BrowserStartPage(browser: browser, library: library)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onDrop(of: [.fileURL, .url], isTargeted: nil) { providers in
+            BrowserAssetDrop.receive(providers) { urls in
+                for (index, url) in urls.enumerated() {
+                    let target = index == 0 ? browser : tabs.newTab(select: false)
+                    target.navigate(to: url)
+                }
+            }
+        }
     }
 
     private var browserPage: some View {
