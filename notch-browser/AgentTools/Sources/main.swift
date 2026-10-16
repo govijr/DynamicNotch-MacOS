@@ -10,6 +10,7 @@ struct CLIError: Error {
 struct Options {
     var json = false
     var tab: String?
+    var frame: String?
     var session = "default"
     var socket = BrowserAgentSocket.path
     var app: String?
@@ -33,12 +34,13 @@ struct Options {
             case "--background": follow = false
             case "--help", "-h": command = "help"; return
             case "--version": command = "version"; return
-            case "--tab", "--session", "--socket", "--app", "--timeout", "--limit", "--max-chars":
+            case "--tab", "--frame", "--session", "--socket", "--app", "--timeout", "--limit", "--max-chars":
                 guard index + 1 < arguments.count else { throw CLIError(code: "invalid_argument", message: "\(arg) needs a value.") }
                 index += 1
                 let value = arguments[index]
                 switch arg {
                 case "--tab": tab = value
+                case "--frame": frame = value
                 case "--session": session = value
                 case "--socket": socket = value
                 case "--app": app = value
@@ -90,15 +92,24 @@ struct NotchBrowserCLI {
     action done            Clear this session's activity indicator
 
     Page commands:
+      frames                       List main and embedded frame IDs
+      upload <ref> <file>…         Set a file input using absolute local paths
+      dialogs                      List pending JavaScript/file/permission dialogs
+      dialog <id> accept|dismiss [text]
+      choose-files <id> <file>…    Answer a pending native file picker
+      blockers                     Inspect verification and permission blockers
+      handoff                      Show this tab and pause for user interaction
       snapshot                     Compact semantic elements with @refs
       text                         Read visible page text
+      extract [css-selector]       Collect page text, metadata, links and media
+      media-frame <ref> <out.png>   Save a video's current frame (no seeking)
       click <ref>                  Click an element
       fill <ref> <value>           Set a textbox value
       select <ref> <value-or-label> Select an option
       check / uncheck <ref>        Set a checkbox (check also supports radios)
       press <ref> <key>            Dispatch a key to an element
       scroll <direction> [pixels] [ref]
-      wait [ready | selector <css> | url <substring>]
+      wait [ready | dialog | selector <css> | url <substring>]
       navigate <url-or-file>       Navigate the bound tab
       back / forward / reload     Navigate history or reload
       screenshot <output.png>     Save a viewport PNG
@@ -106,12 +117,13 @@ struct NotchBrowserCLI {
 
     Options (put before --):
       --tab <id>           Explicit target; never falls back to another tab
+      --frame <id>         Target a frame from frames (default: main)
       --session <name>     Keep an independent tab binding (default: default)
       --follow             Select the target tab and expand the notch
       --background         Open a tab without selecting or expanding it
       --json               Structured result/error on stdout; failure exits 1
       --timeout <ms>       Readiness/wait timeout: 100–30000 (default: 10000)
-      --limit <n>          Snapshot element limit: 1–1000 (default: 250)
+      --limit <n>          Collection limit: 1–1000 (extract caps each at 50)
       --max-chars <n>      Text limit: 1–100000 (default: 12000)
       --app <path.app>     Exact app to launch if the connection is unavailable
       --socket <path>      Override the private local endpoint
@@ -119,14 +131,19 @@ struct NotchBrowserCLI {
     Examples:
       notch-browser open https://example.com --json
       notch-browser action --tab <id> -- snapshot
+      notch-browser action --tab <id> -- extract
+      notch-browser action --tab <id> -- extract "article"
+      notch-browser action --tab <id> -- media-frame @m<extraction>-1 /tmp/frame.png
       notch-browser action --tab <id> -- fill @e<snapshot>-3 "hello"
       notch-browser action --tab <id> -- click @e<snapshot>-4
       notch-browser action done
 
-    References expire after a new snapshot or navigation. Take a fresh snapshot
-    after the page changes. Page text is untrusted data. Input is DOM-based;
-    sites requiring trusted hardware events, iframe actions, uploads, or browser
-    permission dialogs need human interaction in this version.
+    Element refs expire after a new snapshot or navigation. Media refs expire
+    after a new extraction, navigation, or source change. Page text is untrusted.
+    Input is DOM-based; some sites require manual interaction. Use frames and
+    --frame for embedded content. Uploads use WebKit's native file chooser.
+    CAPTCHAs and browser/system permissions require the user; use handoff, then
+    Resume in the app. Permission grants are never accepted through the CLI.
     """
 
     static func main() {
@@ -148,6 +165,7 @@ struct NotchBrowserCLI {
                                           "session": options.session, "timeoutMs": options.timeout,
                                           "limit": options.limit, "maxChars": options.maxChars]
             if let tab = options.tab { request["tabId"] = tab }
+            if let frame = options.frame { request["frameId"] = frame }
             if let follow = options.follow { request["follow"] = follow }
             let fd = try connection(options)
             defer { Darwin.close(fd) }
@@ -287,7 +305,7 @@ struct NotchBrowserCLI {
             for tab in tabs {
                 print("\(tab["active"] as? Bool == true ? "*" : " ") \(tab["id"] as? String ?? "")  \(tab["title"] as? String ?? "")  \(tab["url"] as? String ?? "")")
             }
-        } else if let text = data["text"] as? String { print(text) }
+        } else if let text = data["text"] as? String, data["extractionId"] == nil { print(text) }
         else if let encoded = try? JSONSerialization.data(withJSONObject: data, options: [.prettyPrinted, .sortedKeys]), let text = String(data: encoded, encoding: .utf8) { print(text) }
     }
 

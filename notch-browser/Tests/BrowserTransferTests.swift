@@ -79,6 +79,47 @@ struct BrowserTransferTests {
         try await wait { downloads.items.count > contextCount && downloads.items[0].state != .downloading }
         try expect(try contents(downloads.items[0]) == image, "The native Download Image action writes the original image bytes")
 
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        (webView as! BrowserAssetWebView).imagePasteboard = pasteboard
+        let nativeCopy = ImageCopyFixture(pasteboard: pasteboard, image: image)
+        let copyMenu = NSMenu()
+        let copyImage = NSMenuItem(title: "Copy Image", action: #selector(ImageCopyFixture.copyImage(_:)), keyEquivalent: "")
+        copyImage.identifier = NSUserInterfaceItemIdentifier("WKMenuItemIdentifierCopyImage")
+        copyImage.target = nativeCopy
+        copyImage.representedObject = "native-context"
+        copyMenu.addItem(copyImage)
+        let copyLink = NSMenuItem(title: "Copy Link", action: #selector(ImageCopyFixture.copyLink(_:)), keyEquivalent: "")
+        copyLink.identifier = NSUserInterfaceItemIdentifier("WKMenuItemIdentifierCopyLink")
+        copyLink.target = nativeCopy
+        copyMenu.addItem(copyLink)
+        (webView as! BrowserAssetWebView).willOpenMenu(copyMenu, with: event)
+        try expect(copyImage.target === webView && copyLink.target === nativeCopy,
+                   "Only Copy Image is adapted; Copy Link keeps its native action")
+        copyMenu.performActionForItem(at: 0)
+        try await wait { pasteboard.data(forType: .png) != nil && pasteboard.string(forType: .URL) == nil }
+        try expect(nativeCopy.receivedOriginalContext, "Image copy preserves WebKit's native menu context")
+        try expect(pasteboard.data(forType: .png) == image && NSImage(pasteboard: pasteboard) != nil,
+                   "Copy Image puts the original image on the clipboard for native paste targets")
+        try expect(pasteboard.string(forType: .string) == nil && pasteboard.data(forType: .html) == nil,
+                   "Copy Image omits URL and rich text fallbacks that paste as a link")
+
+        nativeCopy.tiffOnly = true
+        nativeCopy.delay = 0.08
+        copyMenu.performActionForItem(at: 0)
+        try await wait { pasteboard.data(forType: .tiff) != nil && pasteboard.string(forType: .URL) == nil }
+        let bitmap = pasteboard.data(forType: .tiff).flatMap(NSBitmapImageRep.init(data:))
+        try expect(bitmap?.pixelsWide == 128 && bitmap?.pixelsHigh == 128 && NSImage(pasteboard: pasteboard) != nil,
+                   "Asynchronous native TIFF copies preserve full resolution and remain pasteable")
+        try expect(downloads.items.count == contextCount + 1, "Copy Image needs no new download or network request")
+
+        copyMenu.performActionForItem(at: 1)
+        try expect(pasteboard.string(forType: .string) == "https://example.com/link", "Copy Link still copies its address")
+        let textChange = pasteboard.changeCount
+        try expect(!BrowserImageClipboard.keepImageData(on: pasteboard) && pasteboard.changeCount == textChange,
+                   "A text-only clipboard is never cleared by image normalization")
+        (webView as! BrowserAssetWebView).imagePasteboard = .general
+
         let attachment = try await click("attachment", webView: webView!, downloads: downloads)
         try expect(attachment.state == .finished && attachment.filename == "notch-attachment.png", "Displayable image attachments become downloads")
         let unsupported = try await click("unsupported", webView: webView!, downloads: downloads)
@@ -169,6 +210,45 @@ struct BrowserTransferTests {
     @MainActor private static func expect(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
         guard try condition() else { throw NSError(domain: "BrowserTransferTests", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
         checks += 1
+    }
+}
+
+@MainActor
+private final class ImageCopyFixture: NSObject {
+    let pasteboard: NSPasteboard
+    let image: Data
+    var tiffOnly = false
+    var delay: Double = 0
+    var receivedOriginalContext = false
+    init(pasteboard: NSPasteboard, image: Data) {
+        self.pasteboard = pasteboard
+        self.image = image
+    }
+    @objc func copyImage(_ sender: NSMenuItem) {
+        receivedOriginalContext = sender.representedObject as? String == "native-context"
+        let item = NSPasteboardItem()
+        if tiffOnly {
+            item.setData(NSImage(data: image)!.tiffRepresentation!, forType: .tiff)
+        } else {
+            item.setData(image, forType: .png)
+        }
+        item.setString("https://example.com/image.png", forType: .URL)
+        item.setString("https://example.com/image.png", forType: .string)
+        item.setString("<img src='https://example.com/image.png'>", forType: .html)
+        if delay == 0 {
+            pasteboard.clearContents()
+            pasteboard.writeObjects([item])
+        } else {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                pasteboard.clearContents()
+                pasteboard.writeObjects([item])
+            }
+        }
+    }
+    @objc func copyLink(_ sender: NSMenuItem) {
+        pasteboard.clearContents()
+        pasteboard.setString("https://example.com/link", forType: .string)
     }
 }
 

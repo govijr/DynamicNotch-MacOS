@@ -1,0 +1,20 @@
+<!doctype html><html><head><title>Interaction fixture</title></head><body>
+<h1>Files and page dialogs</h1>
+<label>Single file <input id="single" type="file"></label>
+<label>Multiple files <input id="multiple" type="file" multiple></label>
+<input id="hidden-file" type="file" style="display:none">
+<button id="custom-upload" onclick="document.getElementById('hidden-file').click()">Custom upload</button>
+<button id="confirm" onclick="window.confirmResult=confirm('Fixture confirmation')">Confirm fixture</button>
+<button id="prompt" onclick="window.promptResult=prompt('Fixture prompt','Default value')">Prompt fixture</button>
+<button id="alert" onclick="alert('Fixture notice');window.alertReturned=true">Alert fixture</button>
+<p id="result">Waiting for files</p>
+<script>
+window.fileEvents = [];
+for (const input of document.querySelectorAll('input[type=file]')) {
+  input.addEventListener('change', async event => {
+    const files = await Promise.all(Array.from(input.files).map(async file => ({ name: file.name, text: await file.text(), size: file.size })));
+    window.fileEvents.push({ id: input.id, trusted: event.isTrusted, files });
+    document.getElementById('result').textContent = 'Received ' + files.map(file => file.name).join(', ');
+  });
+}
+</script></body></html>

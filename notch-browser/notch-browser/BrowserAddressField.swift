@@ -10,6 +10,14 @@ struct BrowserAddressField: NSViewRepresentable {
     let textColor: NSColor
     let placeholder: String
     let onSubmit: () -> Void
+    var focusRequest: UUID? = nil
+    var accessibilityLabel = "Address"
+    var accessibilityIdentifier = "notch-browser-address"
+    var resignOnSubmit = true
+    var onFocusHandled: () -> Void = {}
+    var onBeginEditing: () -> Void = {}
+    var onEndEditing: () -> Void = {}
+    var onCancel: (() -> Void)? = nil
 
     private var attributedPlaceholder: NSAttributedString {
         NSAttributedString(string: placeholder, attributes: [
@@ -41,10 +49,13 @@ struct BrowserAddressField: NSViewRepresentable {
         field.font = font
         field.textColor = textColor
         field.alignment = .left
-        field.setAccessibilityLabel("Address")
-        field.setAccessibilityIdentifier("notch-browser-address")
+        field.setAccessibilityLabel(accessibilityLabel)
+        field.setAccessibilityIdentifier(accessibilityIdentifier)
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        field.onAttach = { [weak field, weak coordinator = context.coordinator] in
+            if let field { coordinator?.applyFocus(to: field) }
+        }
         return field
     }
 
@@ -58,11 +69,13 @@ struct BrowserAddressField: NSViewRepresentable {
         field.font = font
         field.textColor = textColor
         field.placeholderAttributedString = attributedPlaceholder
+        context.coordinator.applyFocus(to: field)
     }
 
     @MainActor
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: BrowserAddressField
+        private var handledFocusRequest: UUID?
 
         init(_ parent: BrowserAddressField) {
             self.parent = parent
@@ -70,7 +83,23 @@ struct BrowserAddressField: NSViewRepresentable {
 
         @objc func submit(_ sender: NSTextField) {
             parent.onSubmit()
+            if parent.resignOnSubmit { sender.window?.makeFirstResponder(nil) }
         }
+
+        func applyFocus(to field: NSTextField) {
+            guard let request = parent.focusRequest, request != handledFocusRequest, let window = field.window else { return }
+            handledFocusRequest = request
+            DispatchQueue.main.async { [weak self, weak field] in
+                guard let field, field.window === window else { return }
+                window.makeKey()
+                guard window.makeFirstResponder(field) else { return }
+                field.selectText(nil)
+                self?.parent.onFocusHandled()
+            }
+        }
+
+        func controlTextDidBeginEditing(_ notification: Notification) { parent.onBeginEditing() }
+        func controlTextDidEndEditing(_ notification: Notification) { parent.onEndEditing() }
 
         func controlTextDidChange(_ notification: Notification) {
             guard let field = notification.object as? NSTextField else { return }
@@ -83,6 +112,10 @@ struct BrowserAddressField: NSViewRepresentable {
             doCommandBy commandSelector: Selector
         ) -> Bool {
             let selectorName = NSStringFromSelector(commandSelector)
+            if selectorName == "cancelOperation:", let onCancel = parent.onCancel {
+                onCancel()
+                return true
+            }
             guard selectorName == "insertNewline:"
                 || selectorName == "insertNewlineIgnoringFieldEditor:"
             else {
@@ -90,12 +123,18 @@ struct BrowserAddressField: NSViewRepresentable {
             }
 
             parent.onSubmit()
+            if parent.resignOnSubmit { control.window?.makeFirstResponder(nil) }
             return true
         }
     }
 }
 
 final class BrowserAddressNSTextField: NSTextField {
+    var onAttach: (() -> Void)?
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { onAttach?() }
+    }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
     }

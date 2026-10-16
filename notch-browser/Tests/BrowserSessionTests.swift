@@ -21,6 +21,25 @@ struct BrowserSessionTests {
     }
 
     @MainActor private static func run() async throws {
+        let searchDestinations: [(BrowserSearchEngine, String)] = [
+            (.duckDuckGo, "https://duckduckgo.com?q=hello"),
+            (.google, "https://www.google.com/search?q=hello"),
+            (.bing, "https://www.bing.com/search?q=hello"),
+            (.brave, "https://search.brave.com/search?q=hello")
+        ]
+        for (engine, destination) in searchDestinations {
+            try expect(engine.searchURL(for: "hello")?.absoluteString == destination,
+                       "\(engine.name) opens search results directly")
+            let query = "C++ & café #1? / weather in New York"
+            let url = engine.searchURL(for: query)!
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+            // Search providers decode '+' as a space, unlike URLComponents.
+            let decoded = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: " ")
+                .removingPercentEncoding
+            try expect(decoded == "q=" + query && components.fragment == nil && components.queryItems?.count == 1,
+                       "\(engine.name) preserves punctuation, spaces and Unicode in the query")
+        }
+
         let webData = WKWebsiteDataStore.nonPersistent()
         let saved = [record("auth", "old"), record("session", "saved"), record("persistent", "stale", expires: Date().addingTimeInterval(3600))]
         let memory = MemoryCookieBackup(data: try JSONEncoder().encode(saved))
@@ -51,17 +70,30 @@ struct BrowserSessionTests {
         let observedData = WKWebsiteDataStore.nonPersistent()
         let observedBackup = MemoryCookieBackup()
         let library = BrowserLibrary(defaults: defaults, backgroundFileURL: folder.appendingPathComponent("background.jpg"),
-                                     websiteDataStore: observedData, cookieBackup: observedBackup.backup)
+                                     websiteDataStore: observedData, cookieBackup: observedBackup.backup, cookieBackupWatchInterval: 0.1)
         await library.restoreSessionIfNeeded()
         let fixture = URL(string: ProcessInfo.processInfo.environment["NOTCH_SESSION_TEST_URL"]!)!
         let browser = BrowserModel(library: library, startsEmpty: true)
         defer { browser.close() }
+        library.searchEngine = .google
+        for query in ["hello", "weather tomorrow", "C++ & café"] {
+            browser.addressText = query
+            browser.submitAddress()
+            let submitted = browser.requestedURL.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
+            try expect(submitted?.host == "www.google.com" && submitted?.path == "/search"
+                       && submitted?.queryItems == [URLQueryItem(name: "q", value: query)],
+                       "Submitting '\(query)' navigates directly to Google results")
+            // Check the real submission path without sending fixture queries out.
+            browser.stopLoading()
+        }
         browser.navigate(to: fixture)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
                               styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = browser.webView
+        window.orderFrontRegardless()
         defer { window.orderOut(nil) }
         try await wait("local website") { browser.pageTitle == "Cookie observer fixture" && !browser.isLoading }
+        library.setSessionActivity(.surface, active: true)
         _ = try await browser.webView!.evaluateJavaScript("for(let i=0;i<5;i++) document.cookie='burst='+i+';path=/;SameSite=Strict'")
         try await wait("coalesced cookie-change backup") { observedBackup.writeCount == 1 }
         let burst = try JSONDecoder().decode([BrowserCookieRecord].self, from: observedBackup.data!)
@@ -105,8 +137,8 @@ struct BrowserSessionTests {
         guard condition else { throw NSError(domain: "BrowserSessionTests", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
         checks += 1
     }
-    @MainActor private static func wait(_ message: String, _ condition: () -> Bool) async throws {
-        let deadline = Date().addingTimeInterval(8)
+    @MainActor private static func wait(_ message: String, timeout: Double = 8, _ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
         while !condition() {
             guard Date() < deadline else { throw NSError(domain: "BrowserSessionTests", code: 2, userInfo: [NSLocalizedDescriptionKey: "Timed out: " + message]) }
             try await Task.sleep(nanoseconds: 20_000_000)

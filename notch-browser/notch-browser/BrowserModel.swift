@@ -21,10 +21,18 @@ final class BrowserModel: ObservableObject {
     @Published private(set) var lastPageSnapshot: NSImage?
     @Published private(set) var isPresentationReady = false
     @Published private(set) var isEmpty: Bool
+    @Published private(set) var addressFocusRequest: UUID?
+    @Published private(set) var findFocusRequest: UUID?
+    @Published private(set) var isFindVisible = false
+    @Published var findQuery = "" { didSet { scheduleFind() } }
+    @Published private(set) var findMatchFound: Bool?
+    private(set) var isEditingAddress = false
 
     private(set) var requestedURL: URL?
     private(set) var navigationRequestID = UUID()
     private(set) var documentEpoch = UUID()
+    let agentFrames = BrowserAgentFrameRegistry()
+    let pageInteraction = BrowserPageInteraction()
     // Keep the WebKit view alive while the compact surface is shown. The
     // expanded SwiftUI hierarchy is intentionally removed in compact mode,
     // but the browsing session must continue to own its page, history, scroll
@@ -38,10 +46,13 @@ final class BrowserModel: ObservableObject {
     private var presentationID = UUID()
     private(set) var snapshotMemoryCost = 0
     private(set) var snapshotCapturedAt: Date?
+    private var findTask: Task<Void, Never>?
+    private var findRequestID = UUID()
 
     private let library: BrowserLibrary
     var onSessionChange: (() -> Void)?
     var onCreateWebView: ((WKWebViewConfiguration, URL?) -> WKWebView)?
+    var lookupUploadFile: URL?
     var onSnapshotChange: (() -> Void)?
 
     var websiteDataStore: WKWebsiteDataStore {
@@ -68,6 +79,8 @@ final class BrowserModel: ObservableObject {
         if suppliedConfiguration == nil { configuration.websiteDataStore = websiteDataStore }
         BrowserAgentDOM.install(in: configuration)
         let webView = BrowserAssetWebView(frame: NSRect(x: 0, y: 0, width: 1024, height: 720), configuration: configuration)
+        BrowserAgentFrames.shared.attach(agentFrames, to: webView)
+        pageInteraction.webView = webView
         webView.customUserAgent = Self.desktopSafariUserAgent
         let delegate = BrowserNavigationDelegate(browser: self)
         navigationDelegate = delegate
@@ -78,6 +91,7 @@ final class BrowserModel: ObservableObject {
         webView.onPresentationChange = { [weak self] attached in
             if attached {
                 self?.prepareForPresentation()
+                self?.pageInteraction.presentPending()
             } else {
                 self?.presentationID = UUID()
                 self?.isPresentationReady = false
@@ -110,6 +124,10 @@ final class BrowserModel: ObservableObject {
     }
 
     func close() {
+        agentFrames.reset()
+        pageInteraction.cancelAll()
+        findTask?.cancel()
+        findRequestID = UUID()
         stopLoading()
         discardPageSnapshot()
         (webView as? BrowserAssetWebView)?.onPresentationChange = nil
@@ -123,6 +141,7 @@ final class BrowserModel: ObservableObject {
     }
 
     func stopLoading() {
+        pageInteraction.cancelUpload()
         pendingNavigation?.cancel()
         pendingNavigation = nil
         submittedRequestID = nil
@@ -207,6 +226,7 @@ final class BrowserModel: ObservableObject {
     func submitAddress() {
         let input = addressText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return }
+        isEditingAddress = false
 
         if let url = BrowserAddressInput.webURL(from: input) {
             navigate(to: url)
@@ -221,7 +241,7 @@ final class BrowserModel: ObservableObject {
     func navigate(to url: URL) {
         discardPageSnapshot()
         requestedURL = url
-        addressText = url.absoluteString
+        if !isEditingAddress { addressText = url.absoluteString }
         errorMessage = nil
         navigationRequestID = UUID()
         isEmpty = false
@@ -239,18 +259,26 @@ final class BrowserModel: ObservableObject {
     }
 
     func reload() {
+        guard !isEmpty else { return }
         if isLoading {
             stopLoading()
-        } else if let webView, webView.url != nil {
+        } else if let webView, webView.url != nil, webView.url == requestedURL {
             webView.reload()
         } else {
-            // Retry a first navigation that was stopped before WebKit loaded it.
+            // Retry the requested address even when an older page is still
+            // displayed after a stopped or failed navigation.
             navigationRequestID = UUID()
+            ensureWebView()
             loadRequestedPage()
         }
     }
 
     func didStartLoading() {
+        agentFrames.reset()
+        pageInteraction.cancelAll()
+        findTask?.cancel()
+        findRequestID = UUID()
+        findMatchFound = nil
         discardPageSnapshot()
         presentationID = UUID()
         documentEpoch = UUID()
@@ -264,14 +292,14 @@ final class BrowserModel: ObservableObject {
         if let url = webView?.url {
             currentURL = url
             requestedURL = url
-            addressText = url.absoluteString
+            if !isEditingAddress { addressText = url.absoluteString }
         }
     }
 
     func didCommitNavigation(url: URL?) {
         if let url {
             currentURL = url
-            addressText = url.absoluteString
+            if !isEditingAddress { addressText = url.absoluteString }
             requestedURL = url
             isEmpty = false
             library.recordLastVisitedURL(url)
@@ -284,7 +312,7 @@ final class BrowserModel: ObservableObject {
         currentURL = webView.url
 
         if let url = webView.url {
-            addressText = url.absoluteString
+            if !isEditingAddress { addressText = url.absoluteString }
             requestedURL = url
             library.recordLastVisitedURL(url)
         }
@@ -302,6 +330,7 @@ final class BrowserModel: ObservableObject {
         canGoBack = webView.canGoBack
         canGoForward = webView.canGoForward
         onSessionChange?()
+        if isFindVisible && !findQuery.isEmpty { findNext() }
     }
 
     func didFailLoading(_ error: Error) {
@@ -352,9 +381,11 @@ final class BrowserModel: ObservableObject {
         // Full navigations use the commit/finish callbacks. This path handles
         // history.pushState/replaceState and avoids overwriting a queued URL.
         if !isLoading, !webView.isLoading, let url = webView.url, currentURL != url {
+            discardPageSnapshot()
+            presentationID = UUID()
             currentURL = url
             requestedURL = url
-            addressText = url.absoluteString
+            if !isEditingAddress { addressText = url.absoluteString }
             library.recordLastVisitedURL(url)
             changed = true
         }
@@ -363,6 +394,68 @@ final class BrowserModel: ObservableObject {
                 library.recordVisit(url: url, title: pageTitle)
             }
             onSessionChange?()
+        }
+    }
+
+    func focusAddress() { addressFocusRequest = UUID() }
+    func consumeAddressFocus() { addressFocusRequest = nil }
+    func consumeFindFocus() { findFocusRequest = nil }
+    func beginAddressEditing() { isEditingAddress = true }
+    func endAddressEditing() {
+        isEditingAddress = false
+        if let url = requestedURL { addressText = url.absoluteString }
+    }
+    func cancelAddressEditing() {
+        endAddressEditing()
+        addressText = requestedURL?.absoluteString ?? ""
+        webView?.window?.makeFirstResponder(webView)
+    }
+
+    func showFind() {
+        guard !isEmpty else { focusAddress(); return }
+        isFindVisible = true
+        findFocusRequest = UUID()
+        if !findQuery.isEmpty { findNext() }
+    }
+
+    func hideFind() {
+        findTask?.cancel()
+        findRequestID = UUID()
+        isFindVisible = false
+        findMatchFound = nil
+        webView?.find("", configuration: WKFindConfiguration()) { _ in }
+        webView?.window?.makeFirstResponder(webView)
+    }
+
+    private func scheduleFind() {
+        findTask?.cancel()
+        findRequestID = UUID()
+        findMatchFound = nil
+        guard isFindVisible else { return }
+        if findQuery.isEmpty {
+            webView?.find("", configuration: WKFindConfiguration()) { _ in }
+            return
+        }
+        findTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled else { return }
+            self?.findNext()
+        }
+    }
+
+    func findNext(backwards: Bool = false) {
+        findTask?.cancel()
+        guard !findQuery.isEmpty, let webView else { return }
+        findRequestID = UUID()
+        let requestID = findRequestID
+        let epoch = documentEpoch
+        let configuration = WKFindConfiguration()
+        configuration.backwards = backwards
+        configuration.wraps = true
+        webView.find(findQuery, configuration: configuration) { [weak self, weak webView] result in
+            guard let self, let webView, self.webView === webView,
+                  self.findRequestID == requestID, self.documentEpoch == epoch else { return }
+            self.findMatchFound = result.matchFound
         }
     }
 

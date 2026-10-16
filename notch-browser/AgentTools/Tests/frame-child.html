@@ -1,0 +1,9 @@
+<!doctype html><html><head><title>Cross-origin child</title></head><body>
+<h1>Embedded form</h1>
+<label>Embedded name <input id="embedded-name"></label>
+<button onclick="document.getElementById('result').textContent='Saved '+document.getElementById('embedded-name').value">Save embedded</button>
+<p id="result">Not saved</p>
+<label>Embedded file <input id="embedded-file" type="file"></label>
+<script>document.getElementById('embedded-file').onchange=event=>window.embeddedFiles=Array.from(event.target.files).map(file=>file.name);</script>
+<iframe title="Nested frame" src="frame-nested.html"></iframe>
+</body></html>

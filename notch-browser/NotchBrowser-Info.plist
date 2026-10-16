@@ -36,6 +36,37 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Select a screen region to preview and search with Google Lens.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Use the camera on a website only when you allow its request.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Use the microphone on a website only when you allow its request.</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key><dict><key>default</key><string>Search in Notch</string></dict>
+			<key>NSMessage</key><string>searchInNotch</string>
+			<key>NSPortName</key><string>Notch Browser</string>
+			<key>NSRequiredContext</key><dict/>
+			<key>NSSendTypes</key><array><string>NSStringPboardType</string><string>public.utf8-plain-text</string></array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key><dict><key>default</key><string>Translate in Notch</string></dict>
+			<key>NSMessage</key><string>translateInNotch</string>
+			<key>NSPortName</key><string>Notch Browser</string>
+			<key>NSRequiredContext</key><dict/>
+			<key>NSSendTypes</key><array><string>NSStringPboardType</string><string>public.utf8-plain-text</string></array>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key><dict><key>default</key><string>Search Image in Notch</string></dict>
+			<key>NSMessage</key><string>searchImageInNotch</string>
+			<key>NSPortName</key><string>Notch Browser</string>
+			<key>NSRequiredContext</key><dict/>
+			<key>NSSendTypes</key><array><string>public.png</string><string>public.tiff</string><string>NSTIFFPboardType</string></array>
+			<key>NSSendFileTypes</key><array><string>public.image</string></array>
+		</dict>
+	</array>
 	<key>SUFeedURL</key>
 	<string>https://qymrzmmsroxkteaxbgoo.supabase.co/storage/v1/object/public/updates/notch-browser/appcast.xml</string>
 	<key>SUPublicEDKey</key>

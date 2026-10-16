@@ -53,7 +53,7 @@ struct BrowserBehaviorTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let first = folder.appendingPathComponent("first.html")
         let second = folder.appendingPathComponent("second.html")
-        try "<title>First fixture</title><input id='field'>".write(to: first, atomically: true, encoding: .utf8)
+        try "<title>First fixture</title><p>Needle in this page</p><input id='field'>".write(to: first, atomically: true, encoding: .utf8)
         try "<title>Second fixture</title>".write(to: second, atomically: true, encoding: .utf8)
 
         let gate = RestoreGate()
@@ -81,6 +81,20 @@ struct BrowserBehaviorTests {
             throw error
         }
         try expect(waiting.currentURL == first, "Reload retries a first navigation stopped before submission")
+
+        let existingGate = RestoreGate()
+        waitingLibrary.restoreHandler = { await existingGate.wait() }
+        waiting.navigate(to: second)
+        try await wait("queuing navigation with an existing page") { existingGate.isWaiting }
+        waiting.stopLoading()
+        existingGate.release()
+        try await Task.sleep(nanoseconds: 80_000_000)
+        try expect(waiting.webView?.url == first, "Stop leaves the previous document intact")
+        waiting.reload()
+        try await wait("retrying the requested address over an existing page") { waiting.currentURL == second && !waiting.isLoading }
+        try expect(waiting.currentURL == second, "Reload retries the stopped address instead of reloading the older page")
+        waiting.navigate(to: first)
+        try await wait("restoring the form fixture") { waiting.currentURL == first && !waiting.isLoading }
 
         let redirectGate = RestoreGate()
         let redirectLibrary = BrowserLibrary()
@@ -137,12 +151,15 @@ struct BrowserBehaviorTests {
         try await wait("loading after snapshot invalidation") { presented.webView?.title == "Second fixture" && !presented.isLoading }
         try expect(presented.lastPageSnapshot == nil, "An old in-flight capture cannot restore a stale screenshot")
 
+        presented.captureVisiblePage()
+        try await wait("capturing before same-document navigation") { presented.lastPageSnapshot != nil }
         _ = try await presented.webView!.evaluateJavaScript("document.title='Updated live title'; history.pushState({}, '', '#updated')")
         try await wait("observing a title and same-document URL change") {
             presented.pageTitle == "Updated live title" && presented.currentURL?.fragment == "updated"
         }
         try expect(presented.addressText.hasSuffix("#updated") && presented.canGoBack,
                    "Same-document navigation updates the address and navigation controls")
+        try expect(presented.lastPageSnapshot == nil, "Same-document URL changes invalidate the previous screenshot")
         tabs.persistSession()
         let saved = try JSONSerialization.jsonObject(with: defaults.data(forKey: "notchBrowser.openTabs.v1")!) as! [String: Any]
         let savedTabs = saved["tabs"] as! [[String: Any]]
@@ -162,6 +179,42 @@ struct BrowserBehaviorTests {
         try expect(legacy.tabs.count == 2 && legacy.activeBrowser.requestedURL?.path == "/legacy"
                    && legacy.activeBrowser.pageTitle == "example.com" && legacy.tabs[1].isEmpty,
                    "Legacy URL-only sessions migrate without losing tabs")
+
+        restored.selectAdjacentTab()
+        try expect(restored.activeBrowser.requestedURL?.path == "/one", "Next-tab selection wraps")
+        restored.selectAdjacentTab(backwards: true)
+        try expect(restored.activeBrowser.requestedURL?.path == "/two", "Previous-tab selection wraps")
+        restored.closeTab(restored.activeTabID)
+        try expect(restored.reopenClosedTab() && restored.activeBrowser.pageTitle == "Saved second title"
+                   && restored.activeBrowser.requestedURL?.path == "/two", "Reopening restores a closed tab's title and URL")
+        restored.closeTab(restored.tabs[0].id)
+        restored.closeTab(restored.activeTabID)
+        try expect(restored.reopenClosedTab() && restored.tabs.count == 1,
+                   "Reopening the last closed tab replaces its empty fallback")
+        restored.closeTab(restored.activeTabID)
+        restored.activeBrowser.addressText = "Unsubmitted query"
+        try expect(restored.reopenClosedTab() && restored.tabs.count == 2,
+                   "Reopening a closed tab cannot discard an unsubmitted new-tab query")
+
+        window.contentView = waiting.webView
+        waiting.showFind()
+        waiting.findQuery = "Needle"
+        try await wait("native Find matching page content") { waiting.findMatchFound == true }
+        try expect(waiting.isFindVisible, "Find searches through native WebKit")
+        waiting.findQuery = "a phrase that does not exist"
+        try await wait("native Find reporting no matches") { waiting.findMatchFound == false }
+        waiting.findQuery = "Needle"
+        waiting.findNext(backwards: true)
+        try await wait("native Find backwards") { waiting.findMatchFound == true }
+        waiting.hideFind()
+        try expect(!waiting.isFindVisible && waiting.findMatchFound == nil, "Closing Find clears its result state")
+        waiting.beginAddressEditing()
+        waiting.addressText = "unfinished search"
+        _ = try await waiting.webView!.evaluateJavaScript("history.pushState({}, '', '#while-editing')")
+        try await wait("same-document URL while editing") { waiting.currentURL?.fragment == "while-editing" }
+        try expect(waiting.addressText == "unfinished search", "Live navigation cannot overwrite an address being edited")
+        waiting.cancelAddressEditing()
+        try expect(waiting.addressText.hasSuffix("#while-editing"), "Cancelling address editing restores the current address")
     }
 
     @MainActor private static func expect(_ condition: Bool, _ message: String) throws {

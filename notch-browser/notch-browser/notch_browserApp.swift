@@ -26,6 +26,11 @@ struct NotchBrowserApp: App {
                 appDelegate.showBrowser()
             }
 
+            BrowserLookupMenu(lookup: appDelegate.lookup)
+            Button("Search Screen Region with Lens…") { appDelegate.searchScreenRegion() }
+
+            Divider()
+
             BrowserAgentMenu(activity: appDelegate.agentActivity)
 
             if let error = appDelegate.agentConnectionError {
@@ -75,6 +80,20 @@ struct NotchBrowserApp: App {
                     .keyboardShortcut("t", modifiers: .command)
                 Button("Close Tab") { appDelegate.closeTab() }
                     .keyboardShortcut("w", modifiers: .command)
+                Button("Reopen Closed Tab") { appDelegate.reopenClosedTab() }
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
+                Button("Focus Address") { appDelegate.focusAddress() }
+                    .keyboardShortcut("l", modifiers: .command)
+                Button("Find in Page…") { appDelegate.showFind() }
+                    .keyboardShortcut("f", modifiers: .command)
+                Divider()
+                BrowserLookupMenu(lookup: appDelegate.lookup)
+                Button("Search Screen Region with Lens…") { appDelegate.searchScreenRegion() }
+                Divider()
+                Button("Next Tab") { appDelegate.selectAdjacentTab() }
+                    .keyboardShortcut(.tab, modifiers: .control)
+                Button("Previous Tab") { appDelegate.selectAdjacentTab(backwards: true) }
+                    .keyboardShortcut(.tab, modifiers: [.control, .shift])
                 Divider()
                 Button("Go Back") { appDelegate.goBack() }
                     .keyboardShortcut("[", modifiers: .command)
@@ -84,6 +103,18 @@ struct NotchBrowserApp: App {
                     .keyboardShortcut("r", modifiers: .command)
             }
         }
+    }
+}
+
+private struct BrowserLookupMenu: View {
+    @ObservedObject var lookup: BrowserLookupCoordinator
+    var body: some View {
+        Button("Look Up Clipboard") { lookup.lookUpClipboard() }
+            .keyboardShortcut(.space, modifiers: [.control, .shift])
+        Toggle("Enable Clipboard Shortcut", isOn: Binding(
+            get: { lookup.isShortcutEnabled }, set: { lookup.setShortcutEnabled($0) }
+        ))
+        if let error = lookup.shortcutError { Text(error).font(.caption) }
     }
 }
 

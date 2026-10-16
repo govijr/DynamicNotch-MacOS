@@ -32,3 +32,40 @@ xcrun swiftc -swift-version 5 -parse-as-library \
   -o /tmp/notch-browser-keychain-policy-tests
 /tmp/notch-browser-keychain-policy-tests
 ```
+
+## Browser regression checks
+
+Run `python3 Scripts/test-notch-browser.py` for navigation/Stop, bounded page
+snapshots, session/title migration, live URL updates, native Find/address focus,
+cookie backup batching, license startup/races, downloads, bookmarks, backgrounds,
+and Keychain interaction policy. Use `--suite behavior`, `session`, `keyboard`,
+`license`, `transfer`, or `foundation` to check one batch.
+
+The session suite also checks the real search-provider results URLs and query
+encoding. Transfer checks include Copy Image menu routing and pasteable image
+data on a disposable clipboard, while preserving native Copy Link behavior.
+
+These checks build separate native test bundles with disposable preferences and
+website stores. License tests use synthetic credentials and intercepted responses;
+cookie tests use in-memory backup storage and a local HTTP server on a free port.
+They do not read the user's accounts or prove third-party login/purchase behavior.
+Run them in a logged-in macOS desktop session with WebKit/WindowServer access.
+
+Run `python3 notch-browser/AgentTools/Tests/integration.py` for the real local CLI,
+semantic references, background tabs, popups, screenshots, waits, history,
+Stop/Resume, and license enforcement. Both runners execute in the browser CI job.
+
+The agent suite also checks `extract [css-selector]` for scoped readable text,
+metadata, links, images and available captions. A synthetic native-generated
+video verifies `media-frame <ref> <absolute-output.png>` without downloading
+media or reading user accounts. Tests cover playback preservation, source/ref
+changes, cross-origin capture denial and missing captions/decoded frames.
+See `AgentTools/README.md` for extraction limits and examples.
+
+Page screenshots are capped at three entries and 16 MiB. Live web views retain
+their browsing state and use WebKit's default background scheduling. Cookie
+backups keep session cookies only; persistent cookies remain owned by WebKit.
+Change notifications schedule coalesced saves, with a 15-second check during
+browser/agent use for macOS versions that miss notifications. Checks stop when
+both activities end, followed by a final save. Unchanged backups skip storage
+writes, and explicit saves keep their interactive Keychain policy.

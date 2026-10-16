@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import DynamicNotch
 import SwiftUI
 
@@ -7,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let library = BrowserLibrary.shared
     private let license = PolarLicenseModel.shared
     private let tabs: BrowserTabsModel
+    let lookup: BrowserLookupCoordinator
     let agentActivity = BrowserAgentActivity()
     private var agentController: BrowserAgentController!
     private var agentServer: BrowserAgentServer!
@@ -14,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isPreviewingOnboarding = false
     private var isShowingImportOnboarding = false
     private var wasAgentPausedBeforePreview = false
+    private var agentSessionObservation: AnyCancellable?
+    private var isRestoringAccess = true
 
     private var hasBrowserAccess: Bool {
         license.isUnlocked && library.hasCompletedImportOnboarding
@@ -22,14 +26,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     override init() {
         tabs = BrowserTabsModel(library: library)
+        lookup = BrowserLookupCoordinator(tabs: tabs, library: library)
         super.init()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         windowController = NotchBrowserWindowController(
-            tabs: tabs, library: library, activity: agentActivity,
+            tabs: tabs, library: library, activity: agentActivity, lookup: lookup,
             onOpen: { [weak self] in self?.showBrowser() }
         )
+        lookup.onRequest = { [weak self] in self?.presentRequestedLookup() }
+        lookup.onDismiss = { [weak self] restoreFocus in self?.windowController.showCompact(restoreLookupFocus: restoreFocus) }
+        lookup.start()
         agentController = BrowserAgentController(
             tabs: tabs, activity: agentActivity,
             isUnlocked: { [weak self] in self?.hasBrowserAccess == true },
@@ -38,6 +46,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         agentServer = BrowserAgentServer(controller: agentController)
         agentServer.start()
+        license.onAccessRevoked = { [weak self] in
+            guard let self, !self.isPreviewingOnboarding else { return }
+            self.tabs.tabs.forEach { $0.pageInteraction.cancelAll() }
+            self.agentActivity.stop()
+            self.isShowingImportOnboarding = false
+            self.showLicenseOnboarding()
+        }
+        agentSessionObservation = agentActivity.$session.sink { [weak self] session in
+            self?.library.setSessionActivity(.agent, active: session != nil)
+        }
         windowController.showCompact(animated: false)
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-onboarding") {
@@ -48,7 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             await license.restoreAndValidate()
+            isRestoringAccess = false
             guard !isPreviewingOnboarding else { return }
+            if lookup.hasPendingRequest, hasBrowserAccess { presentRequestedLookup(); return }
             if license.isUnlocked {
                 if library.hasCompletedImportOnboarding {
                     windowController.showCompact(animated: false)
@@ -74,6 +94,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowController.showExpanded()
     }
 
+    private func presentRequestedLookup() {
+        guard !isRestoringAccess else { return }
+        guard hasBrowserAccess else { showBrowser(); return }
+        lookup.presentPending()
+        windowController.showExpanded()
+        windowController.focusForLookup()
+    }
+
+    func searchScreenRegion() {
+        guard hasBrowserAccess else { showBrowser(); return }
+        lookup.captureScreenRegion { windowController.showCompact(animated: false) }
+    }
+
     func newTab() {
         guard !isShowingImportOnboarding else { return }
         if license.isUnlocked && !isPreviewingOnboarding && !library.hasCompletedImportOnboarding {
@@ -86,10 +119,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         tabs.addTab()
         windowController.showExpanded()
+        tabs.activeBrowser.focusAddress()
     }
 
     func closeTab() {
         guard hasBrowserAccess else { return }
+        if tabs.isShowingLookup { windowController.showCompact(restoreLookupFocus: true); return }
         tabs.closeTab(tabs.activeTabID)
     }
 
@@ -106,6 +141,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func reloadPage() {
         guard hasBrowserAccess else { return }
         tabs.activeBrowser.reload()
+    }
+
+    func focusAddress() {
+        guard hasBrowserAccess else { return }
+        tabs.isChromeVisible = true
+        windowController.showExpanded()
+        tabs.activeBrowser.focusAddress()
+    }
+
+    func showFind() {
+        guard hasBrowserAccess else { return }
+        tabs.isChromeVisible = true
+        windowController.showExpanded()
+        tabs.activeBrowser.showFind()
+    }
+
+    func reopenClosedTab() {
+        guard hasBrowserAccess, tabs.reopenClosedTab() else { return }
+        windowController.showExpanded()
+    }
+
+    func selectAdjacentTab(backwards: Bool = false) {
+        guard hasBrowserAccess else { return }
+        tabs.selectAdjacentTab(backwards: backwards)
+        windowController.showExpanded()
     }
 
     func showLicenseOnboarding(afterDelay: Bool = false) {
@@ -135,9 +195,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if isPreviewingOnboarding {
                     endOnboardingPreview()
                 } else {
+                    guard license.isUnlocked else {
+                        isShowingImportOnboarding = false
+                        showLicenseOnboarding()
+                        return
+                    }
                     library.completeImportOnboarding()
                     isShowingImportOnboarding = false
-                    windowController.showExpanded()
+                    if lookup.hasPendingRequest { presentRequestedLookup() }
+                    else { windowController.showExpanded() }
                 }
             },
             onExitPreview: { [weak self] in self?.endOnboardingPreview() }
@@ -165,8 +231,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A launch-time preview never loads or changes the stored license.
             // Restore the real entitlement only once the preview has ended.
             if !license.isUnlocked { await license.restoreAndValidate() }
+            isRestoringAccess = false
             guard !isPreviewingOnboarding else { return }
             if !license.isUnlocked { showLicenseOnboarding() }
+            else if lookup.hasPendingRequest { presentRequestedLookup() }
         }
     }
 
@@ -175,6 +243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        lookup.stop()
         agentServer?.stop()
     }
 
@@ -185,7 +254,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard tabs.tabs.contains(where: { $0.webView != nil }) else { return .terminateNow }
 
         Task { @MainActor [weak self] in
-            await self?.library.saveSessionAndWait(updateStatus: false)
+            await self?.library.saveSessionAndWait(updateStatus: false, forceRead: true)
             NSApplication.shared.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
@@ -200,6 +269,7 @@ final class NotchBrowserWindowController {
     private let tabs: BrowserTabsModel
     private let library: BrowserLibrary
     private let activity: BrowserAgentActivity
+    private let lookup: BrowserLookupCoordinator
     private let onOpen: () -> Void
     private let notchController = DynamicNotchWindowController()
     private let surfaceAppearance = BrowserSurfaceAppearance()
@@ -218,11 +288,12 @@ final class NotchBrowserWindowController {
     }
     private var resizeContext: ResizeContext?
 
-    init(tabs: BrowserTabsModel, library: BrowserLibrary, activity: BrowserAgentActivity,
+    init(tabs: BrowserTabsModel, library: BrowserLibrary, activity: BrowserAgentActivity, lookup: BrowserLookupCoordinator,
          onOpen: @escaping () -> Void) {
         self.tabs = tabs
         self.library = library
         self.activity = activity
+        self.lookup = lookup
         self.onOpen = onOpen
         notchController.onDismiss = { [weak self] in
             self?.restoreCompactSurfaceIfNeeded()
@@ -232,19 +303,21 @@ final class NotchBrowserWindowController {
             self.tabs.activeBrowser.captureVisiblePage()
         }
         notchController.onOutsideClick = { [weak self] in
-            guard let self, self.isExpanded else { return false }
+            guard let self, self.isExpanded, !self.surfaceAppearance.isPinned else { return false }
             self.showCompact()
             return true
         }
     }
 
-    func showCompact(animated: Bool = true) {
+    func showCompact(animated: Bool = true, restoreLookupFocus: Bool = false) {
+        library.setSessionActivity(.surface, active: false)
         onboardingTask?.cancel()
         isShowingOnboarding = false
         if isExpanded && notchController.isVisible {
             tabs.activeBrowser.captureVisiblePage()
         }
         isExpanded = false
+        surfaceAppearance.setPinned(false)
         surfaceAppearance.setExpanded(false, animated: animated)
         resizeContext = nil
         notchController.dismissalPolicy = .manual
@@ -275,6 +348,13 @@ final class NotchBrowserWindowController {
         ) {
             CompactBrowserSurface(activity: self.activity, onExpand: expand)
         }
+        notchController.setKeyboardFocus(false)
+        lookup.end(restoreFocus: restoreLookupFocus)
+    }
+
+    func focusForLookup() {
+        guard isExpanded, !isShowingOnboarding else { return }
+        notchController.setKeyboardFocus(true)
     }
 
     func showExpanded(animated: Bool = true) {
@@ -282,6 +362,7 @@ final class NotchBrowserWindowController {
         isShowingOnboarding = false
         guard !isExpanded else { return }
         isExpanded = true
+        library.setSessionActivity(.surface, active: true)
         surfaceAppearance.setExpanded(true, animated: animated)
         // Install click-away handling after the opening hover/click has
         // finished. The compact hover target and expanded surface share one
@@ -303,8 +384,18 @@ final class NotchBrowserWindowController {
 
         DispatchQueue.main.async { [weak self] in
             guard let self, self.isExpanded else { return }
-            self.notchController.dismissalPolicy = .clickOutside
+            self.updateDismissalPolicy()
         }
+    }
+
+    private func togglePinned() {
+        guard isExpanded, !isShowingOnboarding else { return }
+        surfaceAppearance.setPinned(!surfaceAppearance.isPinned)
+        updateDismissalPolicy()
+    }
+
+    private func updateDismissalPolicy() {
+        notchController.dismissalPolicy = isExpanded && !surfaceAppearance.isPinned ? .clickOutside : .manual
     }
 
     func showOnboarding(
@@ -314,9 +405,12 @@ final class NotchBrowserWindowController {
         onUnlocked: @escaping () -> Void,
         onExitPreview: @escaping () -> Void
     ) {
+        lookup.end(restoreFocus: false)
         guard !isShowingOnboarding else { return }
+        library.setSessionActivity(.surface, active: false)
         if isExpanded { tabs.activeBrowser.captureVisiblePage() }
         isExpanded = false
+        surfaceAppearance.setPinned(false)
         isShowingOnboarding = true
         resizeContext = nil
         // Keep the first-launch field available when the pointer leaves the notch.
@@ -367,9 +461,12 @@ final class NotchBrowserWindowController {
         onContinue: @escaping () -> Void,
         onExitPreview: @escaping () -> Void
     ) {
+        lookup.end(restoreFocus: false)
+        library.setSessionActivity(.surface, active: false)
         onboardingTask?.cancel()
         if isExpanded { tabs.activeBrowser.captureVisiblePage() }
         isExpanded = false
+        surfaceAppearance.setPinned(false)
         isShowingOnboarding = true
         resizeContext = nil
         notchController.dismissalPolicy = .manual
@@ -409,7 +506,7 @@ final class NotchBrowserWindowController {
         let tabs = tabs
         let library = library
         let collapse: () -> Void = { [weak self] in
-            self?.showCompact()
+            self?.showCompact(restoreLookupFocus: true)
         }
         let resize: (CGSize) -> Void = { [weak self] translation in
             self?.resizeExpanded(by: translation)
@@ -438,7 +535,9 @@ final class NotchBrowserWindowController {
                 library: library,
                 activity: self.activity,
                 appearance: self.surfaceAppearance,
+                lookup: self.lookup,
                 onCollapse: collapse,
+                onTogglePin: { [weak self] in self?.togglePinned() },
                 onResize: resize,
                 onResizeEnded: resizeEnded
             )

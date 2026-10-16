@@ -14,6 +14,7 @@ final class HarnessDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
     var unlocked = true
     var timer: Timer?
+    private var isHandlingControl = false
     let root = URL(fileURLWithPath: ProcessInfo.processInfo.environment["NOTCH_BROWSER_TEST_DIR"]!)
     let suite = "NotchBrowser.AgentTests.\(UUID().uuidString)"
     var defaults: UserDefaults!
@@ -37,22 +38,34 @@ final class HarnessDelegate: NSObject, NSApplicationDelegate {
             })
         server = BrowserAgentServer(controller: controller)
         server.start()
-        let state: [String: Any] = ["ready": server.startupError == nil, "error": server.startupError ?? ""]
-        try! JSONSerialization.data(withJSONObject: state).write(to: root.appendingPathComponent("ready.json"))
+        Task { @MainActor in
+            var state: [String: Any] = ["ready": server.startupError == nil, "error": server.startupError ?? ""]
+            do { try await writeMediaFixture(to: root.appendingPathComponent("reference.mp4")) }
+            catch { state = ["ready": false, "error": "Media fixture: \(error.localizedDescription)"] }
+            try! JSONSerialization.data(withJSONObject: state).write(to: root.appendingPathComponent("ready.json"))
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.readControl() }
         }
     }
 
     func readControl() {
+        guard !isHandlingControl else { return }
         let url = root.appendingPathComponent("control.txt")
         guard let command = try? String(contentsOf: url, encoding: .utf8) else { return }
-        try? FileManager.default.removeItem(at: url)
+        isHandlingControl = true
+        defer { isHandlingControl = false; try? FileManager.default.removeItem(at: url) }
         switch command {
         case "pause": activity.stop()
         case "resume": activity.resume()
         case "locked": unlocked = false
         case "unlocked": unlocked = true
+        case "permission":
+            let result = root.appendingPathComponent("permission-result.txt")
+            tabs.activeBrowser.pageInteraction.add(kind: .permission, message: "Synthetic camera request", origin: "https://permission.fixture") { response in
+                try? (response.accepted ? "granted" : "denied").write(to: result, atomically: true, encoding: .utf8)
+            }
+        case "permission-clear": tabs.activeBrowser.pageInteraction.cancelAll()
         case "shutdown": NSApplication.shared.terminate(nil)
         default: break
         }

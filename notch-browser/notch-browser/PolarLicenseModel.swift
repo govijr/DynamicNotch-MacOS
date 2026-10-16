@@ -1,4 +1,5 @@
 import Combine
+import CryptoKit
 import Foundation
 import Security
 
@@ -16,10 +17,42 @@ struct PolarLicenseConfiguration {
         }
     }
 
+    init(organizationID: String, benefitID: String, checkoutURL: URL) {
+        self.organizationID = organizationID
+        self.benefitID = benefitID
+        self.checkoutURL = checkoutURL
+    }
+
     var isConfigured: Bool {
         UUID(uuidString: organizationID) != nil
             && UUID(uuidString: benefitID) != nil
             && checkoutURL != nil
+    }
+}
+
+struct LicenseCredentialStore: Sendable {
+    let load: @Sendable () -> String?
+    let save: @Sendable (String) throws -> Void
+    let remove: @Sendable (String) -> Void
+    static let keychain = LicenseCredentialStore(load: { LicenseKeychain.load() },
+                                                save: { try LicenseKeychain.save($0) },
+                                                remove: { LicenseKeychain.remove(expectedKey: $0) })
+}
+
+private actor LicenseCredentialWorker {
+    private let store: LicenseCredentialStore
+    private var generation = 0
+    init(store: LicenseCredentialStore) { self.store = store }
+    func load() -> String? { store.load() }
+    func save(_ key: String, generation: Int) throws {
+        guard generation >= self.generation else { throw CancellationError() }
+        self.generation = generation
+        try store.save(key)
+    }
+    func remove(_ key: String, generation: Int) {
+        guard generation >= self.generation else { return }
+        self.generation = generation
+        store.remove(key)
     }
 }
 
@@ -29,6 +62,7 @@ final class PolarLicenseModel: ObservableObject {
 
     @Published private(set) var isUnlocked = false
     @Published private(set) var isValidating = false
+    @Published private(set) var isRevalidating = false
     @Published private(set) var message: String?
     @Published private(set) var messageIsError = false
 
@@ -37,26 +71,63 @@ final class PolarLicenseModel: ObservableObject {
     private let defaults: UserDefaults
     private let gracePeriod: TimeInterval = 72 * 60 * 60
     private let lastValidatedKey = "notchBrowser.license.lastValidatedAt"
+    private let lastValidatedFingerprintKey = "notchBrowser.license.lastValidatedFingerprint"
+    private let credentials: LicenseCredentialWorker
+    private let session: URLSession
+    private let now: @Sendable () -> Date
+    private var validationGeneration = 0
+    private var backgroundValidation: Task<Void, Never>?
+    private var graceExpirationTask: Task<Void, Never>?
+    private var cachedAccessKey: String?
+    var onAccessRevoked: (() -> Void)?
 
     init(configuration: PolarLicenseConfiguration? = nil,
-         defaults: UserDefaults = .standard) {
+         defaults: UserDefaults = .standard, credentials: LicenseCredentialStore = .keychain,
+         session: URLSession = .shared, now: @escaping @Sendable () -> Date = { Date() }) {
         self.configuration = configuration ?? PolarLicenseConfiguration()
         self.defaults = defaults
+        self.credentials = LicenseCredentialWorker(store: credentials)
+        self.session = session
+        self.now = now
     }
 
     func restoreAndValidate() async {
+        let generation = beginValidation()
+        isValidating = true
         guard configuration.isConfigured else {
             isUnlocked = false
             message = "Polar setup is incomplete for this build."
             messageIsError = true
+            isValidating = false
             return
         }
 
-        guard let savedKey = LicenseKeychain.load() else {
+        let savedKey = await credentials.load()
+        guard generation == validationGeneration else { return }
+        guard let savedKey else {
             isUnlocked = false
+            isValidating = false
+            cachedAccessKey = nil
+            graceExpirationTask?.cancel()
+            message = nil
+            messageIsError = false
             return
         }
-        _ = await validate(savedKey, saveAfterSuccess: false, allowOfflineGrace: true)
+        if isRecentlyValidated(savedKey) {
+            cachedAccessKey = savedKey
+            isUnlocked = true
+            isValidating = false
+            isRevalidating = true
+            message = "Your recent license check is valid. Checking in the background…"
+            messageIsError = false
+            scheduleGraceExpiration(for: savedKey, generation: generation)
+            backgroundValidation = Task { @MainActor [weak self] in
+                _ = await self?.validate(savedKey, saveAfterSuccess: false, allowOfflineGrace: true,
+                                         generation: generation, background: true)
+            }
+        } else {
+            _ = await validate(savedKey, saveAfterSuccess: false, allowOfflineGrace: true, generation: generation)
+        }
     }
 
     func activate(_ enteredKey: String) async -> Bool {
@@ -71,59 +142,136 @@ final class PolarLicenseModel: ObservableObject {
             messageIsError = true
             return false
         }
-        return await validate(key, saveAfterSuccess: true, allowOfflineGrace: false)
+        return await validate(key, saveAfterSuccess: true, allowOfflineGrace: false, generation: beginValidation())
     }
 
-    private func validate(_ key: String, saveAfterSuccess: Bool, allowOfflineGrace: Bool) async -> Bool {
-        isValidating = true
-        message = "Checking your license…"
+    private func beginValidation() -> Int {
+        validationGeneration += 1
+        backgroundValidation?.cancel()
+        backgroundValidation = nil
+        graceExpirationTask?.cancel()
+        graceExpirationTask = nil
+        isRevalidating = false
+        if let cachedAccessKey, isRecentlyValidated(cachedAccessKey) {
+            scheduleGraceExpiration(for: cachedAccessKey, generation: validationGeneration)
+        }
+        return validationGeneration
+    }
+
+    private func isRecentlyValidated(_ key: String) -> Bool {
+        let lastSuccess = defaults.double(forKey: lastValidatedKey)
+        let age = now().timeIntervalSince1970 - lastSuccess
+        let savedFingerprint = defaults.string(forKey: lastValidatedFingerprintKey)
+        // Existing installations have a timestamp but no fingerprint yet.
+        return lastSuccess > 0 && age >= 0 && age <= gracePeriod
+            && (savedFingerprint == nil || savedFingerprint == fingerprint(key))
+    }
+
+    private func fingerprint(_ key: String) -> String {
+        let identity = configuration.organizationID + ":" + configuration.benefitID + ":" + key
+        return SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func scheduleGraceExpiration(for key: String, generation: Int) {
+        let age = now().timeIntervalSince1970 - defaults.double(forKey: lastValidatedKey)
+        let remaining = max(0, gracePeriod - age)
+        graceExpirationTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+            guard !Task.isCancelled, let self, self.isUnlocked, self.validationGeneration == generation,
+                  !self.isRecentlyValidated(key) else { return }
+            self.isUnlocked = false
+            self.cachedAccessKey = nil
+            self.message = "Your offline license check has expired. Connect to the internet and try again."
+            self.messageIsError = true
+            self.onAccessRevoked?()
+        }
+    }
+
+    private func validate(_ key: String, saveAfterSuccess: Bool, allowOfflineGrace: Bool,
+                          generation: Int, background: Bool = false) async -> Bool {
+        guard generation == validationGeneration, !Task.isCancelled else { return false }
+        isValidating = !background
+        isRevalidating = background
+        if !background { message = "Checking your license…" }
         messageIsError = false
-        defer { isValidating = false }
+        defer {
+            if generation == validationGeneration {
+                isValidating = false
+                isRevalidating = false
+            }
+        }
 
         do {
             try await validateWithPolar(key)
+            guard generation == validationGeneration, !Task.isCancelled else { return false }
             if saveAfterSuccess {
                 do {
-                    try LicenseKeychain.save(key)
+                    try await credentials.save(key, generation: generation)
+                    guard generation == validationGeneration else { return false }
                 } catch {
+                    guard generation == validationGeneration, !Task.isCancelled else { return false }
                     message = "License is valid, but it could not be saved to Keychain. Try again."
                     messageIsError = true
                     return false
                 }
             }
-            defaults.set(Date().timeIntervalSince1970, forKey: lastValidatedKey)
+            graceExpirationTask?.cancel()
+            cachedAccessKey = nil
+            defaults.set(now().timeIntervalSince1970, forKey: lastValidatedKey)
+            defaults.set(fingerprint(key), forKey: lastValidatedFingerprintKey)
             isUnlocked = true
             message = "License verified. You’re all set."
             messageIsError = false
             return true
         } catch PolarValidationError.invalidKey {
+            guard generation == validationGeneration, !Task.isCancelled else { return false }
             if !saveAfterSuccess {
+                let wasUnlocked = isUnlocked
                 isUnlocked = false
-                LicenseKeychain.remove()
+                cachedAccessKey = nil
+                graceExpirationTask?.cancel()
                 defaults.removeObject(forKey: lastValidatedKey)
+                defaults.removeObject(forKey: lastValidatedFingerprintKey)
+                if wasUnlocked { onAccessRevoked?() }
+                await credentials.remove(key, generation: generation)
+                guard generation == validationGeneration else { return false }
             }
             message = "That key isn’t active for Notch Browser. Check the key and try again."
             messageIsError = true
             return false
         } catch PolarValidationError.wrongBenefit {
+            guard generation == validationGeneration, !Task.isCancelled else { return false }
             if !saveAfterSuccess {
+                let wasUnlocked = isUnlocked
                 isUnlocked = false
-                LicenseKeychain.remove()
+                cachedAccessKey = nil
+                graceExpirationTask?.cancel()
                 defaults.removeObject(forKey: lastValidatedKey)
+                defaults.removeObject(forKey: lastValidatedFingerprintKey)
+                if wasUnlocked { onAccessRevoked?() }
+                await credentials.remove(key, generation: generation)
+                guard generation == validationGeneration else { return false }
             }
             message = "This key is for a different product. Use the Notch Browser key from your Polar purchases."
             messageIsError = true
             return false
         } catch {
-            let lastSuccess = defaults.double(forKey: lastValidatedKey)
-            let age = Date().timeIntervalSince1970 - lastSuccess
-            if allowOfflineGrace, lastSuccess > 0, age >= 0, age <= gracePeriod {
+            guard generation == validationGeneration, !Task.isCancelled else { return false }
+            if allowOfflineGrace, isRecentlyValidated(key) {
+                cachedAccessKey = key
+                scheduleGraceExpiration(for: key, generation: generation)
                 isUnlocked = true
-                message = "We couldn’t reach Polar. Your recent license check is still valid; reconnect within 72 hours."
+                message = "We couldn’t reach Polar. Your recent license check remains valid until its offline grace expires."
                 messageIsError = false
                 return true
             } else {
-                if !saveAfterSuccess { isUnlocked = false }
+                if !saveAfterSuccess {
+                    let wasUnlocked = isUnlocked
+                    isUnlocked = false
+                    cachedAccessKey = nil
+                    graceExpirationTask?.cancel()
+                    if wasUnlocked { onAccessRevoked?() }
+                }
                 message = "We couldn’t reach Polar. Connect to the internet and try again."
                 messageIsError = true
                 return false
@@ -150,7 +298,7 @@ final class PolarLicenseModel: ObservableObject {
             "benefit_id": configuration.benefitID
         ])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw PolarValidationError.serviceUnavailable
         }
@@ -186,7 +334,7 @@ private enum LicenseKeychain {
     }
 
     static func load() -> String? {
-        try? BrowserKeychainAccess.perform(allowInteraction: true) { loadValue() }
+        try? BrowserKeychainAccess.perform(allowInteraction: false) { loadValue() }
     }
 
     private static func loadValue() -> String? {
@@ -228,8 +376,10 @@ private enum LicenseKeychain {
         guard addStatus == errSecSuccess else { throw LicenseKeychainError(addStatus) }
     }
 
-    static func remove() {
-        try? BrowserKeychainAccess.perform(allowInteraction: true) { removeValue() }
+    static func remove(expectedKey: String) {
+        try? BrowserKeychainAccess.perform(allowInteraction: false) {
+            if loadValue() == expectedKey { removeValue() }
+        }
     }
 
     private static func removeValue() {

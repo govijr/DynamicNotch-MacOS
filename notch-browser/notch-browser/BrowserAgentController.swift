@@ -52,7 +52,7 @@ final class BrowserAgentController {
         let encoded = (try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys])) ?? Data()
         if encoded.count > BrowserAgentSocket.maxMessageBytes {
             return (try? JSONSerialization.data(withJSONObject: ["id": requestID, "protocolVersion": 1, "ok": false,
-                "error": ["code": "result_too_large", "message": "The result exceeded 1 MB. Reduce snapshot limits or return a smaller value from eval."]])) ?? Data()
+                "error": ["code": "result_too_large", "message": "The result exceeded 1 MB. Reduce --limit or --max-chars, narrow extract to a selector, or return a smaller value from eval."]])) ?? Data()
         }
         return encoded
     }
@@ -62,7 +62,7 @@ final class BrowserAgentController {
             return ["app": "Notch Browser", "protocolVersion": 1, "engine": "WebKit", "unlocked": isUnlocked(),
                     "paused": activity.isPaused, "busy": inFlight != nil,
                     "activeSession": activity.session as Any? ?? NSNull(),
-                    "capabilities": ["tabs", "snapshot", "text", "click", "fill", "select", "check", "uncheck", "press", "scroll", "wait", "screenshot", "eval", "local-html", "presentation"]]
+                    "capabilities": ["tabs", "frames", "snapshot", "text", "extract", "media-frame", "upload", "dialogs", "blockers", "handoff", "click", "fill", "select", "check", "uncheck", "press", "scroll", "wait", "screenshot", "eval", "local-html", "presentation"]]
         }
         if command == "done" {
             guard inFlight == nil else { throw BrowserAgentError(code: "busy", message: "Wait for the running command to finish before calling done.") }
@@ -110,6 +110,10 @@ final class BrowserAgentController {
         let browser = try target(request: request, session: session)
         inFlightTab = browser
         if request["follow"] as? Bool == true { tabs.selectTab(browser.id); expand() }
+        let frameID = request["frameId"] as? String
+        if frameID != nil && frameID != "main", ["close", "navigate", "back", "forward", "reload", "screenshot", "frames", "dialogs", "dialog", "choose-files", "handoff"].contains(command) {
+            throw BrowserAgentError(code: "unsupported_in_frame", message: "This command targets the whole tab. Omit --frame; use frame page actions for embedded content.")
+        }
         if command == "close" {
             tabs.closeTab(browser.id)
             return ["closed": browser.id.uuidString]
@@ -119,6 +123,47 @@ final class BrowserAgentController {
             browser.navigate(to: try parseURL(args[0]))
             try await waitForReady(browser, timeout: timeout, generation: generation)
             return describe(browser)
+        }
+        if command == "dialogs" {
+            guard args.isEmpty else { throw usage("dialogs") }
+            return ["tabId": browser.id.uuidString, "dialogs": browser.pageInteraction.dialogs]
+        }
+        if command == "dialog" {
+            guard (2...3).contains(args.count), ["accept", "dismiss"].contains(args[1]) else {
+                throw usage("dialog <dialog-id> accept|dismiss [prompt-text]")
+            }
+            try browser.pageInteraction.respond(id: args[0], accept: args[1] == "accept", text: args.count == 3 ? args[2] : nil)
+            return ["tabId": browser.id.uuidString, "dialogId": args[0], "answered": true]
+        }
+        if command == "choose-files" {
+            guard args.count >= 2 else { throw usage("choose-files <dialog-id> <absolute-file>…") }
+            let files = try browser.pageInteraction.chooseFiles(id: args[0], paths: Array(args.dropFirst()))
+            return ["tabId": browser.id.uuidString, "dialogId": args[0], "files": files.map(\.lastPathComponent)]
+        }
+        if command == "handoff" {
+            guard args.isEmpty else { throw usage("handoff") }
+            tabs.selectTab(browser.id)
+            expand()
+            browser.pageInteraction.presentPending()
+            activity.stop()
+            return ["tabId": browser.id.uuidString, "paused": true, "requiresUser": true,
+                    "dialogs": browser.pageInteraction.dialogs, "message": "Browser shown. Complete the manual step, then use Resume in the app."]
+        }
+        if command == "blockers" {
+            guard args.isEmpty else { throw usage("blockers") }
+            if browser.pageInteraction.hasPending {
+                return ["tabId": browser.id.uuidString, "dialogs": browser.pageInteraction.dialogs,
+                        "blockers": [], "limitations": ["Page script inspection waits until the native dialog is answered."]]
+            }
+            let target = try browser.agentFrames.target(frameID)
+            var values: [String: Any] = ["documentEpoch": browser.documentEpoch.uuidString]
+            if let id = target.documentID { values["frameDocumentId"] = id }
+            var state = try await BrowserAgentDOM.run("challenge-state", arguments: values, in: browser.ensureWebView(), frame: target.frame)
+            state["tabId"] = browser.id.uuidString
+            state["frameId"] = frameID ?? "main"
+            state["dialogs"] = browser.pageInteraction.dialogs
+            state["limitations"] = ["Verification detection is best effort. macOS-owned permission dialogs require user interaction and are not enumerated by this command."]
+            return state
         }
         let webView = browser.ensureWebView()
         if command == "back" || command == "forward" || command == "reload" {
@@ -133,10 +178,17 @@ final class BrowserAgentController {
             try await waitForReady(browser, timeout: timeout, generation: generation)
             return describe(browser)
         }
-        if command == "wait" { return try await wait(args, browser: browser, timeout: timeout, generation: generation) }
+        if command == "wait" { return try await wait(args, browser: browser, frameID: frameID, timeout: timeout, generation: generation) }
         guard !browser.isEmpty else { throw BrowserAgentError(code: "empty_tab", message: "Navigate this tab to a page first.") }
         try await waitForReady(browser, timeout: timeout, generation: generation)
         try activity.check(generation)
+        if command == "frames" {
+            guard args.isEmpty else { throw usage("frames") }
+            let frames = try await browser.agentFrames.list(in: webView, epoch: browser.documentEpoch, timeout: timeout)
+            try activity.check(generation)
+            return ["tabId": browser.id.uuidString, "frames": frames]
+        }
+        let frameTarget = try browser.agentFrames.target(frameID)
         var values: [String: Any] = [:]
         switch command {
         case "snapshot":
@@ -145,6 +197,58 @@ final class BrowserAgentController {
         case "text":
             guard args.isEmpty else { throw usage("text") }
             values = ["maxChars": request["maxChars"] as? Int ?? 16000]
+        case "extract":
+            guard args.count <= 1 else { throw usage("extract [css-selector]") }
+            values = ["extractionId": UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
+                      "limit": request["limit"] as? Int ?? 50, "maxChars": request["maxChars"] as? Int ?? 12000]
+            if let selector = args.first { values["selector"] = selector }
+        case "upload":
+            guard args.count >= 2 else { throw usage("upload <file-input-ref> <absolute-file>…") }
+            var values: [String: Any] = ["ref": args[0], "documentEpoch": browser.documentEpoch.uuidString]
+            if let id = frameTarget.documentID { values["frameDocumentId"] = id }
+            let info = try await BrowserAgentDOM.run("file-info", arguments: values, in: webView, frame: frameTarget.frame)
+            guard let frameURL = info["url"] as? String else { throw BrowserAgentError(code: "frame_gone", message: "Take a fresh snapshot of the upload frame.") }
+            let paths = Array(args.dropFirst())
+            guard info["multiple"] as? Bool == true || paths.count == 1 else {
+                throw BrowserAgentError(code: "invalid_argument", message: "This file input accepts only one file.")
+            }
+            try browser.pageInteraction.planUpload(paths: paths, frameURL: frameURL, mainFrame: frameTarget.frame?.isMainFrame ?? true)
+            defer { browser.pageInteraction.cancelUpload() }
+            _ = try await BrowserAgentDOM.run("upload-trigger", arguments: values, in: webView, frame: frameTarget.frame,
+                                              interruption: { browser.pageInteraction.blockingError })
+            let deadline = Date().addingTimeInterval(Double(min(timeout, 3000)) / 1000)
+            while browser.pageInteraction.uploadResult == nil {
+                try activity.check(generation)
+                if let error = browser.pageInteraction.blockingError { throw error }
+                guard Date() < deadline else {
+                    throw BrowserAgentError(code: "file_picker_unavailable", message: "The site did not open its file picker. No files were supplied. Try its upload button, then dialogs and choose-files.")
+                }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            }
+            let files = try browser.pageInteraction.uploadResult!.get()
+            try activity.check(generation)
+            return ["tabId": browser.id.uuidString, "frameId": frameID ?? "main", "files": files.map(\.lastPathComponent), "inputMode": "native-file-picker"]
+        case "media-frame":
+            guard args.count == 2, args[1].hasPrefix("/"), args[1].lowercased().hasSuffix(".png") else {
+                throw usage("media-frame <media-ref> <absolute-output.png>")
+            }
+            let epoch = browser.documentEpoch
+            var values: [String: Any] = ["ref": args[0], "documentEpoch": epoch.uuidString]
+            if let documentID = frameTarget.documentID { values["frameDocumentId"] = documentID }
+            var frame = try await BrowserAgentDOM.run("media-frame", arguments: values, in: webView, frame: frameTarget.frame)
+            try activity.check(generation)
+            guard epoch == browser.documentEpoch else {
+                throw BrowserAgentError(code: "stale_ref", message: "The page navigated during capture. Run extract again.")
+            }
+            guard let encoded = frame.removeValue(forKey: "png") as? String, let png = Data(base64Encoded: encoded) else {
+                throw BrowserAgentError(code: "frame_unavailable", message: "The video frame could not be encoded as PNG.")
+            }
+            do { try png.write(to: URL(fileURLWithPath: args[1]), options: .atomic) }
+            catch { throw BrowserAgentError(code: "file_write_failed", message: "Could not save the video frame: \(error.localizedDescription)") }
+            frame["path"] = args[1]
+            frame["tabId"] = browser.id.uuidString
+            frame["session"] = session
+            return frame
         case "click", "check", "uncheck":
             guard args.count == 1 else { throw usage("\(command) <ref>") }
             values = ["ref": args[0]]
@@ -162,7 +266,18 @@ final class BrowserAgentController {
             if args.count > 2 { values["ref"] = args[2] }
         case "eval":
             guard args.count == 1 else { throw usage("eval <javascript-expression>") }
-            let result = try await BrowserAgentDOM.evaluate("return await (" + args[0] + ");", arguments: [:], in: webView, world: .page, timeout: timeout)
+            var challengeArgs: [String: Any] = ["documentEpoch": browser.documentEpoch.uuidString]
+            if let id = frameTarget.documentID { challengeArgs["frameDocumentId"] = id }
+            let challenge = try await BrowserAgentDOM.run("challenge-state", arguments: challengeArgs, in: webView, frame: frameTarget.frame)
+            guard challenge["challengeDocument"] as? Bool != true else {
+                throw BrowserAgentError(code: "human_required", message: "Human-verification documents require the user. Run handoff.")
+            }
+            if let documentID = frameTarget.documentID {
+                _ = try await BrowserAgentDOM.run("identify", arguments: ["frameDocumentId": documentID,
+                    "documentEpoch": browser.documentEpoch.uuidString], in: webView, frame: frameTarget.frame)
+            }
+            let result = try await BrowserAgentDOM.evaluate("return await (" + args[0] + ");", arguments: [:], in: webView, world: .page, frame: frameTarget.frame, timeout: timeout,
+                                                           interruption: { browser.pageInteraction.blockingError })
             try activity.check(generation)
             let resultObject: Any = result ?? NSNull()
             guard JSONSerialization.isValidJSONObject(["result": resultObject]) else {
@@ -176,10 +291,13 @@ final class BrowserAgentController {
             throw BrowserAgentError(code: "unsupported_command", message: "Unknown command: \(command). Run notch-browser help.")
         }
         values["documentEpoch"] = browser.documentEpoch.uuidString
-        var result = try await BrowserAgentDOM.run(command, arguments: values, in: webView)
+        if let documentID = frameTarget.documentID { values["frameDocumentId"] = documentID }
+        var result = try await BrowserAgentDOM.run(command, arguments: values, in: webView, frame: frameTarget.frame,
+                                                  interruption: { browser.pageInteraction.blockingError })
         try activity.check(generation)
         result["tabId"] = browser.id.uuidString
         result["session"] = session
+        result["frameId"] = frameID ?? "main"
         return result
     }
 
@@ -229,10 +347,12 @@ final class BrowserAgentController {
         let webView = browser.ensureWebView()
         repeat {
             try activity.check(generation)
+            if let error = browser.pageInteraction.blockingError { throw error }
             guard tabs.tabs.contains(where: { $0.id == browser.id }) else { throw BrowserAgentError(code: "tab_gone", message: "The tab closed during the command.") }
             if let error = browser.errorMessage { throw BrowserAgentError(code: "navigation_failed", message: error) }
             if !browser.isLoading && !webView.isLoading {
-                let state = try await BrowserAgentDOM.run("ready", arguments: ["documentEpoch": browser.documentEpoch.uuidString], in: webView)
+                let state = try await BrowserAgentDOM.run("ready", arguments: ["documentEpoch": browser.documentEpoch.uuidString], in: webView,
+                                                           interruption: { browser.pageInteraction.blockingError })
                 if state["ready"] as? Bool == true { return }
             }
             try await Task.sleep(nanoseconds: 100_000_000)
@@ -240,7 +360,42 @@ final class BrowserAgentController {
         throw BrowserAgentError(code: "timeout", message: "The page did not become ready within \(timeout) ms. The tab remains open; inspect it or wait again.")
     }
 
-    private func wait(_ args: [String], browser: BrowserModel, timeout: Int, generation: Int) async throws -> [String: Any] {
+    private func wait(_ args: [String], browser: BrowserModel, frameID: String?, timeout: Int, generation: Int) async throws -> [String: Any] {
+        if args == ["dialog"] {
+            guard frameID == nil || frameID == "main" else {
+                throw BrowserAgentError(code: "unsupported_in_frame", message: "Dialogs belong to the tab. Omit --frame when waiting for a dialog.")
+            }
+            let deadline = Date().addingTimeInterval(Double(timeout) / 1000)
+            repeat {
+                try activity.check(generation)
+                guard tabs.tabs.contains(where: { $0.id == browser.id }) else { throw BrowserAgentError(code: "tab_gone", message: "The tab closed while waiting for a dialog.") }
+                if browser.pageInteraction.hasPending { return ["tabId": browser.id.uuidString, "dialogs": browser.pageInteraction.dialogs] }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            } while Date() < deadline
+            throw BrowserAgentError(code: "timeout", message: "No dialog appeared within \(timeout) ms.")
+        }
+        let frameTarget = try browser.agentFrames.target(frameID)
+        if frameTarget.frame != nil {
+            guard args.isEmpty || args == ["ready"] || (args.count == 2 && ["selector", "url"].contains(args[0])) else {
+                throw usage("wait [ready | selector <css> | url <substring>]")
+            }
+            let deadline = Date().addingTimeInterval(Double(timeout) / 1000)
+            repeat {
+                try activity.check(generation)
+                if let error = browser.pageInteraction.blockingError { throw error }
+                var values: [String: Any] = ["documentEpoch": browser.documentEpoch.uuidString, "frameDocumentId": frameTarget.documentID ?? ""]
+                let selector = args.first == "selector"
+                if selector { values["selector"] = args[1] }
+                let state = try await BrowserAgentDOM.run(selector ? "exists" : "ready", arguments: values,
+                                                         in: browser.ensureWebView(), frame: frameTarget.frame,
+                                                         interruption: { browser.pageInteraction.blockingError })
+                let matched = selector ? state["found"] as? Bool == true : args.first == "url"
+                    ? (state["url"] as? String)?.contains(args[1]) == true : state["ready"] as? Bool == true
+                if matched { return ["tabId": browser.id.uuidString, "frameId": frameID ?? "main", "matched": true] }
+                try await Task.sleep(nanoseconds: 100_000_000)
+            } while Date() < deadline
+            throw BrowserAgentError(code: "timeout", message: "The frame wait condition did not match within \(timeout) ms.")
+        }
         if args.isEmpty || args == ["ready"] {
             try await waitForReady(browser, timeout: timeout, generation: generation)
             return ["tabId": browser.id.uuidString, "ready": true]
@@ -255,7 +410,8 @@ final class BrowserAgentController {
             if args[0] == "url" {
                 matches = webView.url?.absoluteString.contains(args[1]) == true
             } else {
-                let result = try await BrowserAgentDOM.run("exists", arguments: ["selector": args[1], "documentEpoch": browser.documentEpoch.uuidString], in: webView)
+                let result = try await BrowserAgentDOM.run("exists", arguments: ["selector": args[1], "documentEpoch": browser.documentEpoch.uuidString], in: webView,
+                                                            interruption: { browser.pageInteraction.blockingError })
                 matches = result["found"] as? Bool == true
             }
             if matches { return ["tabId": browser.id.uuidString, "matched": true] }

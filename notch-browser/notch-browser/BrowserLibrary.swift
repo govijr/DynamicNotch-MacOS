@@ -38,12 +38,18 @@ enum BrowserSearchEngine: String, CaseIterable, Codable, Identifiable {
     }
 
     func searchURL(for query: String) -> URL? {
-        var components = URLComponents(
-            url: homepageURL,
+        // Google, Bing and Brave use /search; their homepages can merely
+        // prefill the query without actually displaying search results.
+        let resultsURL = self == .duckDuckGo ? homepageURL : homepageURL.appendingPathComponent("search")
+        guard var components = URLComponents(
+            url: resultsURL,
             resolvingAgainstBaseURL: false
-        )
-        components?.queryItems = [URLQueryItem(name: "q", value: query)]
-        return components?.url
+        ) else { return nil }
+        components.queryItems = [URLQueryItem(name: "q", value: query)]
+        // Providers interpret '+' as a space in query parameters.
+        components.percentEncodedQuery = components.percentEncodedQuery?
+            .replacingOccurrences(of: "+", with: "%2B")
+        return components.url
     }
 }
 
@@ -117,6 +123,9 @@ final class BrowserLibrary: ObservableObject {
     private var cookieRevision = 0
     private var savedCookieRevision = 0
     private var automaticSessionBackupEnabled = true
+    private var sessionActivities: Set<BrowserSessionActivity> = []
+    private var cookieBackupWatch: Task<Void, Never>?
+    private let cookieBackupWatchInterval: UInt64
 
     private static let searchEngineKey = "notchBrowser.searchEngine"
     private static let bookmarksKey = "notchBrowser.bookmarks"
@@ -127,8 +136,11 @@ final class BrowserLibrary: ObservableObject {
     private let backgroundFileURL: URL
 
     init(defaults: UserDefaults = .standard, backgroundFileURL: URL? = nil,
-         websiteDataStore suppliedStore: WKWebsiteDataStore? = nil, cookieBackup: BrowserCookieBackup = .keychain) {
+         websiteDataStore suppliedStore: WKWebsiteDataStore? = nil, cookieBackup: BrowserCookieBackup = .keychain,
+         cookieBackupWatchInterval: TimeInterval = 15) {
         self.defaults = defaults
+        let interval = cookieBackupWatchInterval.isFinite ? min(max(cookieBackupWatchInterval, 0.1), 300) : 15
+        self.cookieBackupWatchInterval = UInt64(interval * 1_000_000_000)
         hasCompletedImportOnboarding = defaults.bool(forKey: Self.importOnboardingKey)
         self.backgroundFileURL = backgroundFileURL ?? FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -170,6 +182,7 @@ final class BrowserLibrary: ObservableObject {
     }
 
     deinit {
+        cookieBackupWatch?.cancel()
         if let cookieObserver {
             let store = cookieStore
             Task { @MainActor in store.remove(cookieObserver) }
@@ -316,7 +329,6 @@ final class BrowserLibrary: ObservableObject {
 
     func scheduleSessionSave() {
         cookieRevision += 1
-        print("Cookie test revision \(cookieRevision), saved \(savedCookieRevision), queued \(pendingSessionSave != nil), restoring \(isRestoringSession)")
         queueSessionSave()
     }
 
@@ -332,6 +344,7 @@ final class BrowserLibrary: ObservableObject {
 
     func saveSessionNow() {
         automaticSessionBackupEnabled = true
+        startCookieBackupWatchIfNeeded()
         pendingSessionSave?.cancel()
         pendingSessionSave = nil
         Task { @MainActor [weak self] in
@@ -339,13 +352,12 @@ final class BrowserLibrary: ObservableObject {
         }
     }
 
-    func saveSessionAndWait(updateStatus: Bool) async {
-        print("Cookie test save \(updateStatus), revision \(cookieRevision), saved \(savedCookieRevision), active \(activeSessionSave != nil)")
+    func saveSessionAndWait(updateStatus: Bool, forceRead: Bool = false) async {
         if let activeSessionSave {
             await activeSessionSave.value
-            if !updateStatus && cookieRevision == savedCookieRevision { return }
+            if !updateStatus && !forceRead && cookieRevision == savedCookieRevision { return }
         }
-        guard updateStatus || cookieRevision != savedCookieRevision else { return }
+        guard updateStatus || forceRead || cookieRevision != savedCookieRevision else { return }
         let revision = cookieRevision
         let saveID = UUID()
         let task = Task { @MainActor [weak self] in
@@ -371,6 +383,36 @@ final class BrowserLibrary: ObservableObject {
 
     func refreshChromeProfiles() {
         chromeProfiles = BrowserSessionStore.discoverChromeProfiles()
+    }
+
+    func setSessionActivity(_ activity: BrowserSessionActivity, active: Bool) {
+        if active {
+            sessionActivities.insert(activity)
+            startCookieBackupWatchIfNeeded()
+        } else {
+            guard sessionActivities.remove(activity) != nil, sessionActivities.isEmpty else { return }
+            cookieBackupWatch?.cancel()
+            cookieBackupWatch = nil
+            Task { @MainActor [weak self] in
+                guard let self, self.automaticSessionBackupEnabled else { return }
+                await self.saveSessionAndWait(updateStatus: false, forceRead: true)
+            }
+        }
+    }
+
+    private func startCookieBackupWatchIfNeeded() {
+        guard automaticSessionBackupEnabled, cookieBackupWatch == nil, !sessionActivities.isEmpty else { return }
+        let interval = cookieBackupWatchInterval
+        cookieBackupWatch = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: interval)
+                guard !Task.isCancelled, let self, !self.sessionActivities.isEmpty else { return }
+                // Observers can miss repeated notifications on some macOS
+                // versions. Check infrequently during use; unchanged data never
+                // rewrites Keychain. No watch runs while the browser is idle.
+                await self.saveSessionAndWait(updateStatus: false, forceRead: true)
+            }
+        }
     }
 
     func completeImportOnboarding() {
@@ -400,6 +442,7 @@ final class BrowserLibrary: ObservableObject {
         }
         if includeCookies {
             automaticSessionBackupEnabled = true
+            startCookieBackupWatchIfNeeded()
             do {
                 await restoreSessionIfNeeded()
                 let result = try await sessionStore.importChromeCookies(from: profile.cookieDatabaseURL)
@@ -453,6 +496,8 @@ final class BrowserLibrary: ObservableObject {
 
     func forgetSavedSession() {
         automaticSessionBackupEnabled = false
+        cookieBackupWatch?.cancel()
+        cookieBackupWatch = nil
         pendingSessionSave?.cancel()
         pendingSessionSave = nil
         activeSessionSave?.cancel()
@@ -492,3 +537,5 @@ private final class BrowserCookieObserver: NSObject, WKHTTPCookieStoreObserver {
         Task { @MainActor [weak self] in self?.onChange() }
     }
 }
+
+enum BrowserSessionActivity: Hashable { case surface, agent }

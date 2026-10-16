@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Reel reference fixture</title>
+  <meta property="og:description" content="A short product reveal with three cuts.">
+  <meta name="author" content="Fixture Creator">
+  <meta property="og:image" content="https://example.org/poster.png">
+  <link rel="canonical" href="https://example.org/reel/reference">
+  <style>body { font: 16px system-ui; } .secret { display: none; }</style>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@graph":[{"@type":"VideoObject","name":"Three-cut reveal",
+    "description":"Wide shot, detail, final reveal.","author":{"name":"Fixture Creator"},
+    "uploadDate":"2026-10-15","duration":"PT2S","contentUrl":"https://example.org/reference.mp4",
+    "thumbnailUrl":["https://example.org/poster.png"],"transcript":"Publisher supplied transcript."},
+    {"@type":"ImageObject","name":"Malformed URL fixture","contentUrl":{"url":"https://example.org/not-a-direct-url"}}]}
+  </script>
+  <script type="application/ld+json">{ broken publisher metadata</script>
+</head>
+<body>
+  <nav>Navigation noise <a href="https://example.org/outside">Outside link</a></nav>
+  <article id="reel">
+    <h1>Three-cut reveal</h1>
+    <p>Opening wide shot, then a close-up. Finish with the product reveal.</p>
+    <p class="secret">hidden-content-must-not-leak</p>
+    <input type="password" value="extraction-password-must-not-leak">
+    <textarea>draft-value-must-not-leak</textarea>
+    <a href="https://example.org/source">Original reference</a>
+    <a href="javascript:alert('never')">Unsafe URL</a>
+    <img src="poster.svg" alt="Blue product reference" width="64" height="64">
+    <video id="clip" src="reference.mp4" width="64" height="64" muted playsinline preload="auto" controls></video>
+    <audio id="audio" controls></audio>
+    <iframe title="Embedded example" srcdoc="<p>frame-text-must-not-leak</p>"></iframe>
+  </article>
+  <section id="other"><h2>Other content</h2><p>Unrelated feed entry</p></section>
+  <script>
+    const clip = document.getElementById('clip');
+    const captions = clip.addTextTrack('captions', 'Fixture captions', 'en');
+    captions.mode = 'hidden';
+    captions.addCue(new VTTCue(0, 1, 'Start with a wide shot.'));
+    captions.addCue(new VTTCue(1, 2, 'Cut to the product.'));
+    const ready = () => { const marker = document.createElement('span'); marker.id = 'media-ready'; marker.textContent = 'Media ready'; document.body.append(marker); };
+    clip.addEventListener('loadeddata', ready, { once: true });
+    if (clip.readyState >= 2) ready();
+  </script>
+</body>
+</html>

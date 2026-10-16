@@ -9,7 +9,9 @@ struct BrowserTabsView: View {
     @ObservedObject var library: BrowserLibrary
     @ObservedObject var activity: BrowserAgentActivity
     @ObservedObject var appearance: BrowserSurfaceAppearance
+    @ObservedObject var lookup: BrowserLookupCoordinator
     let onCollapse: () -> Void
+    let onTogglePin: () -> Void
     let onResize: (CGSize) -> Void
     let onResizeEnded: (CGSize) -> Void
 
@@ -20,7 +22,9 @@ struct BrowserTabsView: View {
             library: library,
             activity: activity,
             appearance: appearance,
+            lookup: lookup,
             onCollapse: onCollapse,
+            onTogglePin: onTogglePin,
             onResize: onResize,
             onResizeEnded: onResizeEnded
         )
@@ -31,6 +35,9 @@ struct BrowserTabsView: View {
 @MainActor
 final class BrowserSurfaceAppearance: ObservableObject {
     @Published private(set) var backgroundOpacity: Double = 0
+    @Published private(set) var isPinned = false
+
+    func setPinned(_ pinned: Bool) { isPinned = pinned }
 
     func setExpanded(_ expanded: Bool, animated: Bool) {
         let animation: Animation? = animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -73,27 +80,44 @@ struct ContentView: View {
     @ObservedObject var library: BrowserLibrary
     @ObservedObject var activity: BrowserAgentActivity
     @ObservedObject var appearance: BrowserSurfaceAppearance
+    @ObservedObject var lookup: BrowserLookupCoordinator
     @Environment(\.dynamicNotchSafeContentInsets) private var safeContentInsets
     let onCollapse: () -> Void
+    let onTogglePin: () -> Void
     let onResize: (CGSize) -> Void
     let onResizeEnded: (CGSize) -> Void
     @State private var isRevealed = false
     @State private var isPageSnapshotVisible = true
     @State private var snapshotRevealTask: Task<Void, Never>?
 
-    private var isChromeVisible: Bool { tabs.isChromeVisible }
+    private var isChromeVisible: Bool { tabs.isShowingLookup || tabs.isChromeVisible }
     private var isEmbeddedPage: Bool { !isChromeVisible && !browser.isEmpty }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Group {
-                if isChromeVisible {
+                if tabs.isShowingLookup {
+                    VStack(spacing: 0) {
+                        BrowserLookupBar(lookup: lookup, isPinned: appearance.isPinned, onTogglePin: onTogglePin)
+                        if let image = lookup.image, !lookup.hasStartedImageSearch {
+                            BrowserLookupImagePreview(lookup: lookup, image: image)
+                        } else if browser.isEmpty {
+                            newTabPage
+                        } else {
+                            browserToolbar
+                            if browser.isFindVisible { BrowserFindBar(browser: browser) }
+                            errorBanner
+                            browserPage
+                        }
+                    }
+                } else if isChromeVisible {
                     VStack(spacing: 0) {
                         tabStrip
                         if browser.isEmpty {
                             newTabPage
                         } else {
                             browserToolbar
+                            if browser.isFindVisible { BrowserFindBar(browser: browser) }
                             errorBanner
                             browserPage
                         }
@@ -115,6 +139,9 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     BrowserAgentActivityView(activity: activity)
                         .fixedSize()
+
+                    pinButton
+                        .background(.black.opacity(0.35), in: Circle())
 
                     Button(action: showBrowserChrome) {
                         Image(systemName: "eye")
@@ -213,6 +240,7 @@ struct ContentView: View {
                 }
                 .onAppear { revealActiveTab(using: proxy) }
                 .onChange(of: tabs.tabs.count) { _ in revealActiveTab(using: proxy) }
+                .onChange(of: tabs.activeTabID) { _ in revealActiveTab(using: proxy) }
             }
 
             Button(action: toggleBrowserChrome) {
@@ -223,6 +251,8 @@ struct ContentView: View {
             .accessibilityLabel("Hide browser controls")
 
             BrowserDownloadsButton()
+
+            pinButton
 
             Button(action: onCollapse) {
                 Image(systemName: "chevron.up")
@@ -247,6 +277,18 @@ struct ContentView: View {
         } else {
             proxy.scrollTo(tabs.activeTabID, anchor: .trailing)
         }
+    }
+
+    private var pinButton: some View {
+        Button(action: onTogglePin) {
+            Image(systemName: appearance.isPinned ? "pin.fill" : "pin")
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .help(appearance.isPinned ? "Unpin browser — collapse when clicking outside" : "Pin browser open while using other apps")
+        .accessibilityLabel(appearance.isPinned ? "Unpin browser" : "Pin browser open")
+        .accessibilityValue(appearance.isPinned ? "Pinned" : "Unpinned")
     }
 
     private var newTabPage: some View {
@@ -326,7 +368,12 @@ struct ContentView: View {
                 font: .systemFont(ofSize: 12),
                 textColor: .white,
                 placeholder: "Search \(library.searchEngine.name) or enter a URL",
-                onSubmit: browser.submitAddress
+                onSubmit: browser.submitAddress,
+                focusRequest: browser.addressFocusRequest,
+                onFocusHandled: browser.consumeAddressFocus,
+                onBeginEditing: browser.beginAddressEditing,
+                onEndEditing: browser.endAddressEditing,
+                onCancel: browser.cancelAddressEditing
             )
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)

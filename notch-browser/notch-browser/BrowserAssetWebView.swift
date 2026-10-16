@@ -9,6 +9,8 @@ import WebKit
 final class BrowserAssetWebView: WKWebView {
     var downloads: BrowserDownloads = .shared
     var onPresentationChange: ((Bool) -> Void)?
+    var imagePasteboard: NSPasteboard = .general
+    private var imageCopyTask: Task<Void, Never>?
     private var mouseDownPoint: NSPoint?
     private var lookupID = UUID()
     private var isLookingUpAsset = false
@@ -50,6 +52,16 @@ final class BrowserAssetWebView: WKWebView {
         super.willOpenMenu(menu, with: event)
         let point = convert(event.locationInWindow, from: nil)
         for item in menu.items {
+            if item.identifier?.rawValue == "WKMenuItemIdentifierCopyImage",
+               let action = item.action {
+                if action == #selector(copyContextImage(_:)) { continue }
+                item.representedObject = BrowserContextImageCopy(
+                    action: action, target: item.target, representedObject: item.representedObject
+                )
+                item.target = self
+                item.action = #selector(copyContextImage(_:))
+                continue
+            }
             let kind: String
             switch item.identifier?.rawValue {
             case "WKMenuItemIdentifierDownloadImage": kind = "image"
@@ -65,6 +77,31 @@ final class BrowserAssetWebView: WKWebView {
                 kind: kind, url: contextAssets[kind].flatMap(URL.init(string:)),
                 point: NSPoint(x: point.x, y: isFlipped ? point.y : bounds.height - point.y)
             )
+        }
+    }
+
+    @objc private func copyContextImage(_ sender: NSMenuItem) {
+        guard let native = sender.representedObject as? BrowserContextImageCopy else { return }
+        imageCopyTask?.cancel()
+        let pasteboard = imagePasteboard
+        let previousChange = pasteboard.changeCount
+        // Keep WebKit's cached image, including authenticated, cross-origin,
+        // blob and offline images. Its original action also owns frame hit testing.
+        sender.representedObject = native.representedObject
+        let sent = NSApp.sendAction(native.action, to: native.target, from: sender)
+        sender.representedObject = native
+        guard sent else { return }
+        imageCopyTask = Task { @MainActor in
+            // WebKit writes the native pasteboard asynchronously via its web
+            // process. Only inspect the first change following this copy action.
+            for _ in 0..<100 {
+                guard !Task.isCancelled else { return }
+                if pasteboard.changeCount != previousChange {
+                    BrowserImageClipboard.keepImageData(on: pasteboard)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
         }
     }
 
@@ -208,6 +245,39 @@ final class BrowserAssetWebView: WKWebView {
         if (kind === 'media') { const media = target?.closest('video, audio'); return media?.currentSrc || media?.src || null; }
         return target?.closest('a[href]')?.href || null;
         """
+}
+
+/// Older WebKit versions also publish URL/text/RTFD representations for Copy
+/// Image. Some paste targets prefer those over the bitmap and insert a link.
+@MainActor
+enum BrowserImageClipboard {
+    @discardableResult
+    static func keepImageData(on pasteboard: NSPasteboard) -> Bool {
+        let change = pasteboard.changeCount
+        let item = NSPasteboardItem()
+        var hasImage = false
+        for type in pasteboard.types ?? [] {
+            guard UTType(type.rawValue)?.conforms(to: .image) == true,
+                  let data = pasteboard.data(forType: type), !data.isEmpty else { continue }
+            hasImage = item.setData(data, forType: type) || hasImage
+        }
+        // Do not erase the clipboard if the selected item wasn't a loaded image,
+        // or replace a newer copy while WebKit was providing its image data.
+        guard hasImage, pasteboard.changeCount == change else { return false }
+        pasteboard.clearContents()
+        return pasteboard.writeObjects([item])
+    }
+}
+
+private final class BrowserContextImageCopy {
+    let action: Selector
+    let target: AnyObject?
+    let representedObject: Any?
+    init(action: Selector, target: AnyObject?, representedObject: Any?) {
+        self.action = action
+        self.target = target
+        self.representedObject = representedObject
+    }
 }
 
 private final class BrowserContextDownload {

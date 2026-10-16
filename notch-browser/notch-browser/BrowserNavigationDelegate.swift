@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import UniformTypeIdentifiers
 
 @MainActor
 final class BrowserNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDelegate {
@@ -64,52 +65,55 @@ final class BrowserNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
-        presentJavaScriptDialog(in: webView, title: frame.request.url?.host ?? "Website", message: message) { _ in
-            completionHandler()
-        }
+        guard let browser = browserModel else { completionHandler(); return }
+        browser.pageInteraction.add(kind: .alert, message: message, origin: BrowserPageInteraction.origin(frame)) { _ in completionHandler() }
     }
 
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
-        presentJavaScriptDialog(in: webView, title: frame.request.url?.host ?? "Website", message: message) {
-            completionHandler($0)
-        }
+        guard let browser = browserModel else { completionHandler(false); return }
+        browser.pageInteraction.add(kind: .confirm, message: message, origin: BrowserPageInteraction.origin(frame)) { completionHandler($0.accepted) }
     }
 
     func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
                  defaultText: String?, initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping (String?) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = frame.request.url?.host ?? "Website"
-        alert.informativeText = prompt
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Cancel")
-        let field = NSTextField(string: defaultText ?? "")
-        field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
-        alert.accessoryView = field
-        guard let window = webView.window else {
-            completionHandler(nil)
-            return
-        }
-        alert.beginSheetModal(for: window) { response in
-            completionHandler(response == .alertFirstButtonReturn ? field.stringValue : nil)
+        guard let browser = browserModel else { completionHandler(nil); return }
+        browser.pageInteraction.add(kind: .prompt, message: prompt, origin: BrowserPageInteraction.origin(frame), defaultText: defaultText) {
+            completionHandler($0.accepted ? $0.text : nil)
         }
     }
 
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
                  initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping ([URL]?) -> Void) {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        guard let window = webView.window else {
-            completionHandler(nil)
-            return
+        guard let browser = browserModel else { completionHandler(nil); return }
+        var configurePanel: ((NSOpenPanel) -> Void)?
+        if let file = browserModel?.lookupUploadFile, FileManager.default.fileExists(atPath: file.path),
+           let url = frame.request.url, url.scheme == "https",
+           (url.host == "www.google.com" && url.path == "/imghp" || url.host == "lens.google.com") {
+            configurePanel = { panel in
+                panel.directoryURL = file.deletingLastPathComponent()
+                panel.allowedContentTypes = [.image]
+                panel.message = "Choose Lookup.png to search the prepared image with Google Lens."
+            }
         }
-        panel.beginSheetModal(for: window) { response in
-            completionHandler(response == .OK ? panel.urls : nil)
+        browser.pageInteraction.handleFilePicker(parameters: parameters, frame: frame, configurePanel: configurePanel, completion: completionHandler)
+    }
+
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                 initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
+                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        guard let browser = browserModel else { decisionHandler(.deny); return }
+        let resource: String
+        switch type {
+        case .camera: resource = "camera"
+        case .microphone: resource = "microphone"
+        case .cameraAndMicrophone: resource = "camera and microphone"
+        @unknown default: decisionHandler(.deny); return
         }
+        browser.pageInteraction.add(kind: .permission, message: "Allow this website to use your \(resource)?",
+                                    origin: BrowserPageInteraction.origin(frame)) { decisionHandler($0.accepted ? .grant : .deny) }
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -119,22 +123,6 @@ final class BrowserNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
     private func prepare(_ download: WKDownload, from webView: WKWebView) {
         browserModel?.didBeginDownload()
         downloads.receive(download, from: webView)
-    }
-
-    private func presentJavaScriptDialog(in webView: WKWebView, title: String,
-                                         message: String, completion: @escaping (Bool) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Cancel")
-        guard let window = webView.window else {
-            completion(false)
-            return
-        }
-        alert.beginSheetModal(for: window) { response in
-            completion(response == .alertFirstButtonReturn)
-        }
     }
 
 }

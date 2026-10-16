@@ -184,7 +184,12 @@ struct BrowserStartPage: View {
                 .font(.system(size: 14))
                 .foregroundStyle(.white.opacity(0.55))
             BrowserAddressField(text: $browser.addressText, font: .systemFont(ofSize: 14), textColor: .white,
-                                placeholder: "Search or enter a URL", onSubmit: browser.submitAddress)
+                                placeholder: "Search or enter a URL", onSubmit: browser.submitAddress,
+                                focusRequest: browser.addressFocusRequest,
+                                onFocusHandled: browser.consumeAddressFocus,
+                                onBeginEditing: browser.beginAddressEditing,
+                                onEndEditing: browser.endAddressEditing,
+                                onCancel: browser.cancelAddressEditing)
                 .frame(height: 25)
         }
         .padding(.horizontal, 17)
