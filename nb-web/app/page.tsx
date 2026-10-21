@@ -5,9 +5,9 @@ import FeatureVideo from "./feature-video";
 import BrowserComparison from "./browser-comparison";
 import AgentFeatures from "./agent-features";
 import Reveal from "./reveal";
+import { checkoutUrl, downloadUrl } from "./product-links";
 import "./landing.css";
 
-const checkoutUrl = "https://buy.polar.sh/polar_cl_h61CaUncTVTTbKDnENNCs7cizvFTBYopQmWaS15R88r";
 const brands = ["Datadog", "Figma", "Ramp", "Adobe", "Stripe", "Amazon"];
 
 function AppMark({ size = 40 }: { size?: number }) {
@@ -36,7 +36,8 @@ export default function Home() {
           <a href="#comparison" className="hidden transition-colors hover:text-[#777] sm:block">Compare</a>
           <a href="#agents" className="hidden transition-colors hover:text-[#777] sm:block">For agents</a>
           {/* <a href="#pricing" className="hidden transition-colors hover:text-[#777] md:block">Buy</a> */}
-          <BuyLink small>Buy</BuyLink>
+          <a href={downloadUrl} className="text-[13px] transition-colors hover:text-[#777] sm:text-sm">Download</a>
+          <BuyLink small>Buy Ink · $5</BuyLink>
         </nav>
       </header>
 
@@ -49,13 +50,15 @@ export default function Home() {
             <br/> your  macOS Notch.
           </h1>
           {/* <p className="hero-agent-description">Quick browsing for you.<br className="sm:hidden" /> A real browser for your AI agent.</p> */}
-          <div className="mt-7 flex flex-wrap items-center justify-center gap-x- gap-y-3">
+          <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
             {/* <input type="email" placeholder="Enter your email" 
             className="w-full max-w-[500px] rounded-full border border-gray-100 px-4 py-3 text-sm" /> */}
-            <BuyLink small>Buy</BuyLink>
+            <BuyLink>Buy Ink · $5</BuyLink>
+            <a href={downloadUrl} className="inline-flex min-h-12 items-center justify-center rounded-full border border-black/15 px-6 text-[15px] font-medium transition-colors hover:bg-black/5">Download for Mac</a>
             {/* <a href="#agents" className="hero-agent-link">Explore agent features <span aria-hidden="true">↗</span></a> */}
           </div>
-          <p className="mt-4 text-xs font-medium text-[#000]">One-time purchase · CLI & skills included</p>
+          <p className="mt-4 text-xs font-medium text-[#000]">One-time purchase · License required to unlock · CLI &amp; skills included</p>
+          <p className="mt-2 text-xs text-[#777]">macOS 13 or later · Apple silicon &amp; Intel</p>
         </section>
 
         <section id="demo" className="mx-auto max-w-[1120px] scroll-mt-24 px-6 sm:px-10" aria-label="See Notch Browser in action">
@@ -102,9 +105,10 @@ export default function Home() {
         <section id="pricing" aria-label="Buy Notch Browser" className="landing-container pricing-section">
           <Reveal>
             <p className="early-discount"><span>Early discount</span><del>$19</del></p>
-            <a href={checkoutUrl} className="big-buy-button" aria-label="Buy Notch Browser for $5, early discount from $19">
-              <span aria-hidden="true"></span><span>Buy for $5</span>
+            <a href={checkoutUrl} className="big-buy-button" aria-label="Buy Ink for Mac for $5, early discount from $19">
+              <span aria-hidden="true"></span><span>Buy Ink · $5</span>
             </a>
+            <a href={downloadUrl} className="mt-5 inline-flex text-sm font-medium underline underline-offset-4">Already purchased? Download for Mac</a>
           </Reveal>
         </section>
 
@@ -113,6 +117,8 @@ export default function Home() {
             <h2 id="faq-title" className="faq-heading">Good to know.</h2>
             <div className="faq-questions">
               {[
+                ["How do I download and activate Ink?", "Download Ink, open the disk image, and drag notch-browser into Applications. Buy a license, then copy your key from your Polar purchase email or customer portal and paste it into the app. The Mac app is currently named Notch Browser."],
+                ["Already purchased?", "You can download Ink again using any Download link on this page. Your license key is in your Polar purchase email and customer portal. If you don’t see the email, check your spam folder."],
                 ["How many tabs can it handle?", "There’s no fixed tab limit. Keep the tabs you need close by, though Notch Browser is designed for a focused handful of everyday tabs rather than dozens of heavy pages. How many run comfortably depends on your Mac and the sites you open."],
                 ["Do I need to sign in to every site again?", "Chrome import can bring over your cookies and signed-in sessions during setup, so you don’t have to start from scratch. Some sites may still ask you to sign in again. Safari currently imports bookmarks; you’ll need to sign in to those sites again."],
                 ["Can it launch at login?", "Yes. Turn on Launch at Login in the app’s menu and Notch Browser will be ready when you sign in to your Mac."],
@@ -142,7 +148,8 @@ export default function Home() {
             <a href="#features" className="hover:text-black">Features</a>
             <a href="#agents" className="hover:text-black">For agents</a>
             <a href="#faq" className="hover:text-black">FAQ</a>
-            <a href={checkoutUrl} className="hover:text-black">Get for Mac <span aria-hidden="true">↗</span></a>
+            <a href={downloadUrl} className="hover:text-black">Download for Mac</a>
+            <a href={checkoutUrl} className="hover:text-black">Buy a license <span aria-hidden="true">↗</span></a>
             <span>© 2026 Govi</span>
           </div>
         </div>
