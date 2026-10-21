@@ -5,6 +5,10 @@
   padding-inline: 40px;
 }
 
+.hero-agent-description { max-width: 480px; margin: 22px auto 0; color: #6e6e73; font-size: 16px; line-height: 1.65; letter-spacing: -0.025em; text-wrap: balance; }
+.hero-agent-link { display: inline-flex; min-height: 40px; align-items: center; gap: 8px; color: #424245; font-size: 14px; font-weight: 500; letter-spacing: -0.02em; text-underline-offset: 4px; }
+.hero-agent-link:hover { color: #111; text-decoration: underline; }
+
 .brand-section { max-width: 1040px; padding-block: 64px 80px; }
 .landing-eyebrow { margin-bottom: 14px; color: #6e6e73; font-size: 14px; font-weight: 500; letter-spacing: -0.015em; }
 .landing-heading { font-size: clamp(36px, 4.6vw, 56px); font-weight: 600; line-height: 1.08; letter-spacing: -0.055em; text-wrap: balance; }
@@ -16,16 +20,29 @@
 
 .comparison-section { max-width: 960px; padding-block: 40px 72px; scroll-margin-top: 56px; }
 .comparison-heading { color: #335a79; background: linear-gradient(110deg, #163a56, #7297b5); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; font-size: clamp(32px, 4.2vw, 48px); font-weight: 600; line-height: 1.08; letter-spacing: -0.055em; text-wrap: balance; }
+.comparison-intro { max-width: 560px; margin-top: 22px; color: #6e6e73; font-size: 18px; line-height: 1.6; letter-spacing: -0.02em; text-wrap: pretty; }
 .comparison-stats { display: flex; align-items: center; gap: 36px; margin-top: 48px; }
 .comparison-mark { display: grid; min-height: 88px; flex-shrink: 0; align-items: center; border-right: 1px solid #d9d9df; padding-right: 36px; }
-.comparison-stat-grid { display: grid; flex: 1; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+.comparison-stat-grid { display: grid; flex: 1; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
 .comparison-stat-grid > div { display: flex; min-width: 0; flex-direction: column-reverse; justify-content: flex-end; gap: 12px; }
-.comparison-stat-grid dd { display: flex; align-items: baseline; gap: 5px; font-size: clamp(36px, 4.5vw, 52px); font-weight: 600; line-height: 1; letter-spacing: -0.065em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.comparison-stat-grid dd { display: flex; align-items: baseline; gap: 5px; color: #163a56; font-size: clamp(42px, 5.2vw, 60px); font-weight: 600; line-height: 1; letter-spacing: -0.065em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .comparison-stat-grid dd span { font-size: 18px; font-weight: 500; letter-spacing: -0.03em; }
-.comparison-stat-grid dt { max-width: 150px; color: #6e6e73; font-size: 12px; line-height: 1.5; }
+.comparison-stat-grid dt { max-width: 150px; color: #6e6e73; font-size: 13px; line-height: 1.5; }
+.comparison-stat-grid sup { margin-left: 2px; font-size: 9px; }
 .comparison-positioning { margin-top: 36px; color: #424245; font-size: 16px; font-weight: 500; line-height: 1.6; letter-spacing: -0.02em; text-wrap: pretty; }
+.comparison-mobile-break { display: none; }
 .comparison-note { max-width: 750px; margin-top: 12px; color: #747479; font-size: 11px; line-height: 1.7; }
-.comparison-note a { color: #53535a; text-decoration: underline; text-underline-offset: 3px; }
+.comparison-method { max-width: 750px; margin-top: 14px; color: #6e6e73; font-size: 12px; line-height: 1.7; }
+.comparison-method > summary { display: flex; width: fit-content; min-height: 32px; align-items: center; gap: 12px; cursor: pointer; list-style: none; color: #335a79; font-weight: 500; }
+.comparison-method > summary::-webkit-details-marker { display: none; }
+.comparison-method > summary > span { font-size: 17px; font-weight: 400; transition: transform 200ms; }
+.comparison-method[open] > summary > span { transform: rotate(45deg); }
+.comparison-method-body { margin-top: 10px; border-top: 1px solid #e5e5e9; padding-top: 18px; }
+.comparison-method ol { display: grid; gap: 10px; padding-left: 18px; list-style: decimal; }
+.comparison-method li { padding-left: 3px; }
+.comparison-method strong { color: #53535a; font-weight: 500; }
+.comparison-method p { margin-top: 12px; }
+.comparison-method a { color: #335a79; text-decoration: underline; text-underline-offset: 3px; }
 
 .pricing-section { max-width: 960px; padding-block: 72px 112px; scroll-margin-top: 48px; text-align: center; }
 .early-discount { display: flex; align-items: baseline; justify-content: center; gap: 12px; margin-bottom: 20px; font-size: 14px; font-weight: 500; }
@@ -55,22 +72,30 @@
 .landing-reveal[data-reveal="pending"][data-reveal-variant="media"] { transform: translateY(30px) scale(0.985); }
 .landing-reveal[data-reveal-variant="fade"] { transform: none; transition-duration: 600ms; }
 
+@media (min-width: 640px) and (max-width: 899px) {
+  .comparison-mark { display: none; }
+}
+
 @media (max-width: 639px) {
   .landing-container { padding-inline: 24px; }
+  .hero-agent-description { margin-top: 20px; font-size: 14px; }
+  .hero-agent-link { font-size: 13px; }
   .brand-section { padding-block: 40px 56px; }
   .landing-eyebrow { margin-bottom: 12px; font-size: 12px; }
   .feature-section { padding-block: 16px 64px; }
   .feature-laptop { margin-top: 28px; }
   .feature-story + .feature-story { margin-top: 72px; }
   .comparison-section { padding-block: 16px 32px; }
+  .comparison-intro { margin-top: 18px; font-size: 15px; }
   .comparison-stats { margin-top: 28px; }
   .comparison-mark { display: none; }
-  .comparison-stat-grid { gap: 14px; }
-  .comparison-stat-grid dd { gap: 3px; font-size: clamp(30px, 8.5vw, 36px); }
+  .comparison-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 20px; }
+  .comparison-stat-grid dd { gap: 3px; font-size: clamp(34px, 9vw, 44px); }
   .comparison-stat-grid dd span { font-size: 12px; }
-  .comparison-stat-grid dt { font-size: 10px; }
+  .comparison-stat-grid dt { font-size: 11px; }
   .comparison-positioning { margin-top: 28px; font-size: 14px; }
-  .comparison-note { font-size: 10px; }
+  .comparison-mobile-break { display: initial; }
+  .comparison-note { font-size: 11px; }
   .pricing-section { padding-block: 56px 72px; }
   .early-discount { margin-bottom: 16px; font-size: 12px; }
   .early-discount del { font-size: 16px; }

@@ -14,7 +14,7 @@ const notionInter = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Notch Browser — A little browser. Right in your notch.",
+  title: "Ink — A little browser. Right in your notch.",
   description:
     "A lightweight browser in your Mac’s notch, for you and your AI agent. Let Codex or Claude Code browse, read pages, and take action—even while the notch is collapsed. CLI and skills included.",
   applicationName: "Notch Browser",

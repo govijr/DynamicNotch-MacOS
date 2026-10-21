@@ -1,0 +1,62 @@
+{
+  "complete": true,
+  "preliminary": true,
+  "displayDate": "October 16, 2026",
+  "downloadPath": "/benchmarks/notch-background-cpu-2026-10-16.json",
+  "medianPairedReductionPercent": 96.35419426633459,
+  "machine": {
+    "cpu": "Apple M4 Pro",
+    "macOS": "26.0"
+  },
+  "notch": {
+    "version": "1.0",
+    "configuration": "Debug"
+  },
+  "chrome": {
+    "version": "155.0.8059.84"
+  },
+  "protocol": {
+    "sites": [
+      "https://www.apple.com/",
+      "https://en.wikipedia.org/wiki/Web_browser",
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript",
+      "https://news.ycombinator.com/",
+      "https://docs.python.org/3/tutorial/"
+    ],
+    "trials": 3,
+    "settleSeconds": 20,
+    "backgroundSeconds": 60,
+    "viewport": {
+      "width": 1024,
+      "height": 720
+    },
+    "description": "Five matching hidden, idle tabs. One browser at a time holds the test pages. Chrome uses a fresh isolated profile; Notch uses its existing profile. Personal Chrome processes are excluded from browser CPU totals. CPU percentages are relative to one core. Both browser hosts and other applications remain running."
+  },
+  "trials": [
+    {
+      "trial": 1,
+      "notchCPUPercent": 0.2162909090909091,
+      "chromeCPUPercent": 1.377017857142857,
+      "reductionPercent": 84.29280288785172
+    },
+    {
+      "trial": 2,
+      "notchCPUPercent": 0.022363636363636363,
+      "chromeCPUPercent": 0.6903272727272727,
+      "reductionPercent": 96.76042983565108
+    },
+    {
+      "trial": 3,
+      "notchCPUPercent": 0.025018181818181818,
+      "chromeCPUPercent": 0.6862181818181818,
+      "reductionPercent": 96.35419426633459
+    }
+  ],
+  "limitations": [
+    "Other apps remained running and contribute to chip power.",
+    "Notch Debug build and existing profile versus Chrome fresh profile.",
+    "Only hidden, idle pages were measured; no active-browsing claim.",
+    "Process CPU attribution uses observed process identities. Exited tasks between identity snapshots can be missed; this is exploratory, not a validated marketing CPU claim."
+  ],
+  "batteryRuntimeMeasured": false
+}

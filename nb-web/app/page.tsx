@@ -4,14 +4,16 @@ import DemoVideo from "./demo-video";
 import FeatureVideo from "./feature-video";
 import BrowserComparison from "./browser-comparison";
 import AgentSetup from "./agent-setup";
+import AgentTerminal, { AgentSetupLink } from "./agent-terminal";
 import Reveal from "./reveal";
 import "./landing.css";
+import "./agent-feature.css";
 
 const checkoutUrl = "https://buy.polar.sh/polar_cl_h61CaUncTVTTbKDnENNCs7cizvFTBYopQmWaS15R88r";
 const brands = ["Datadog", "Figma", "Ramp", "Adobe", "Stripe", "Amazon"];
 
 function AppMark({ size = 40 }: { size?: number }) {
-  return <Image src="/imagetest.png" width={size} height={size} alt="" className="" />;
+  return <Image src="/app-icon.png" width={size} height={size} alt="" />;
 }
 
 function BuyLink({ children, small = false }: { children: ReactNode; small?: boolean }) {
@@ -29,7 +31,7 @@ export default function Home() {
       <header className="mt-3 z-30 flex max-w-[800px] items-center justify-between gap-3 px-4 py-3 sm:mx-auto sm:gap-4 sm:px-7">
         <a href="#main" aria-label="Notch Browser home" className="flex shrink-0 items-center gap-2 text-[16px] font-medium tracking-[-0.035em] sm:text-[19px]">
           <AppMark size={30} />
-          <span className="text-md font-semibold">Notch Browser</span>
+          <span className="text-md font-semibold">Ink</span>
         </a>
         <nav aria-label="Main navigation" className="flex shrink-0 items-center gap-5 text-base font-medium">
           <a href="#features" className="hidden transition-colors hover:text-[#777] sm:block">Features</a>
@@ -42,16 +44,18 @@ export default function Home() {
 
       <main id="main">
         <section className="mx-auto max-w-[1120px] px-6 pb-10 pt-20 text-center sm:px-10 sm:pb-12" aria-labelledby="hero-title">
-          <h1 id="hero-title" className="mx-auto max-w-[700px] text-balance text-[56px] font-semibold leading-[0.88] tracking-tighter sm:text-[80px] lg:text-6xl">
+          <h1 id="hero-title" className="mx-auto max-w-[700px] text-balance text-3xl font-semibold leading-[0.98] tracking-tighter sm:text-5xl sm:leading-[0.88] lg:text-6xl">
             {/* Safari
             <span> in your notch.</span> */}
-            A <Image src="/safari.png" width={72} height={72} alt="" className="-mt-3 inline-block size-14 rounded-md" />
-            Browser in <br/> your  macOS Notch.
+            A Browser <Image src="/safari.png" width={72} height={72} alt="" className="-mt-2 inline-block size-10 rounded-md sm:-mt-3 sm:size-12 lg:size-16" /> in
+            <br/> your  macOS Notch.
           </h1>
-          {/* <p className="mx-auto mt-7 max-w-[560px] text-balance text-[16px] leading-[1.7] text-[#666] sm:text-[17px]">For the quick searches, small tasks, and tabs you don’t need all day. Now your agent can use it, too.</p> */}
-          <div className="mt-7 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+          {/* <p className="hero-agent-description">Quick browsing for you.<br className="sm:hidden" /> A real browser for your AI agent.</p> */}
+          <div className="mt-7 flex flex-wrap items-center justify-center gap-x- gap-y-3">
+            {/* <input type="email" placeholder="Enter your email" 
+            className="w-full max-w-[500px] rounded-full border border-gray-100 px-4 py-3 text-sm" /> */}
             <BuyLink small>Buy</BuyLink>
-            {/* <a href="#demo" className="inline-flex min-h-12 items-center gap-2 text-[14px] font-medium transition-colors hover:text-[#777]">Watch the demo<Arrow /></a> */}
+            {/* <a href="#agents" className="hero-agent-link">Explore agent features <span aria-hidden="true">↗</span></a> */}
           </div>
           <p className="mt-4 text-xs font-medium text-[#000]">One-time purchase · CLI & skills included</p>
         </section>
@@ -79,6 +83,36 @@ export default function Home() {
             </Reveal>
             <Reveal variant="media" className="landing-container feature-laptop">
               <FeatureVideo src="/demo1.mp4" poster="/demo1-poster.jpg" label="everyday browsing demo" />
+            </Reveal>
+          </article>
+
+          <article id="agents" className="feature-story agent-feature" aria-labelledby="agents-title">
+            <Reveal className="landing-container feature-heading">
+              <p className="landing-eyebrow">Built for your AI agent</p>
+              <h2 id="agents-title" className="landing-heading agent-heading">Your browser.<br />Your agent’s, too.</h2>
+              <p className="agent-feature-description">Let Codex or Claude Code research, collect, and act on the web. In the same little browser you use, with your logins and your control.</p>
+              <AgentSetupLink />
+            </Reveal>
+            <Reveal variant="media">
+              <AgentTerminal />
+            </Reveal>
+            <Reveal className="landing-container">
+              <details id="agent-setup" className="agent-connection">
+                <summary><span>Set up your agent</span><span className="agent-connection-note">CLI + skills included</span><span className="agent-connection-plus" aria-hidden="true">+</span></summary>
+                <div className="agent-onboarding" aria-labelledby="agent-setup-title">
+                <div className="agent-onboarding-heading">
+                  <h3 id="agent-setup-title">One setup.<br />Then just ask.</h3>
+                  <p className="agent-onboarding-description">The CLI and agent skills come with the Mac app. Connect your agent once, then ask for what you need in plain language.</p>
+                  <ol className="agent-onboarding-steps">
+                    <li><span aria-hidden="true">01</span>Install and activate Notch Browser.</li>
+                    <li><span aria-hidden="true">02</span>Run the setup command for your agent.</li>
+                    <li><span aria-hidden="true">03</span>Start a new agent session and ask.</li>
+                  </ol>
+                  <a href="/skills/notch-browser/SKILL.md" download="SKILL.md" className="agent-skill-link">Download the agent skill <span aria-hidden="true">↓</span></a>
+                </div>
+                <AgentSetup />
+                </div>
+              </details>
             </Reveal>
           </article>
 
@@ -113,16 +147,14 @@ export default function Home() {
                 ["Do I need to sign in to every site again?", "Chrome import can bring over your cookies and signed-in sessions during setup, so you don’t have to start from scratch. Some sites may still ask you to sign in again. Safari currently imports bookmarks; you’ll need to sign in to those sites again."],
                 ["Can it launch at login?", "Yes. Turn on Launch at Login in the app’s menu and Notch Browser will be ready when you sign in to your Mac."],
                 ["Can I embed any web app into the notch?", "Yes. Open your web app and switch to Embed mode to hide the browser controls. Your AI chat, music player, notes, or documentation can stay in the notch, just a hover away."],
-                ["How is it agent native?", "Notch Browser includes a command-line tool and skills for Codex and Claude Code. Your agent can open tabs, read pages, follow links, fill forms, and capture screenshots in your browser — even while the notch is collapsed. Keep the app running while your agent works."],
+                ["How is it agent native?", "The included CLI and skills let Codex, Claude Code, or another agent with shell access use your real Notch Browser tabs. Agents can read and extract page content, click, fill forms, upload chosen files, interact with embedded frames, capture screenshots, and open local HTML. Keep the app running and your Mac awake, even when the notch is collapsed."],
+                ["Can I take over while an agent is browsing?", "Yes. The app shows agent activity and lets you stop control. If a site needs a CAPTCHA, sign-in verification, or camera or microphone permission, your agent can reveal the tab and hand it back to you. Complete the step, then press Resume in the app. These steps need your input."],
               ].map(([question, answer]) => (
-                <details key={question} id={question === "How is it agent native?" ? "agents" : undefined} className="landing-disclosure">
+                <details key={question} id={question === "How is it agent native?" ? "agent-faq" : undefined} className="landing-disclosure">
                   <summary>{question}<span className="disclosure-plus" aria-hidden="true">+</span></summary>
                   <p className="faq-answer">{answer}</p>
                   {question === "How is it agent native?" && (
-                    <div id="agent-setup" className="faq-agent-tools">
-                      <a href="/skills/notch-browser/SKILL.md" download="SKILL.md" className="agent-skill-link">Download the agent skill <span aria-hidden="true">↗</span></a>
-                      <AgentSetup />
-                    </div>
+                    <a href="#agent-setup" className="agent-skill-link">Set up your agent <span aria-hidden="true">↑</span></a>
                   )}
                 </details>
               ))}

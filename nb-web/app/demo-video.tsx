@@ -74,7 +74,8 @@ export default function DemoVideo() {
             muted
             loop
             playsInline
-            controls
+            // controls
+            autoPlay
             preload="metadata"
             aria-label="Demo of Notch Browser expanding from the Mac’s notch"
             onPlay={() => { shouldAutoPlay.current = true; setIsPlaying(true); }}

@@ -1,0 +1,46 @@
+{
+  "complete": true,
+  "displayDate": "October 15, 2026",
+  "downloadPath": "/benchmarks/notch-efficiency-2026-10-15.json",
+  "machine": {
+    "cpu": "Apple M4 Pro",
+    "ramBytes": 25769803776,
+    "macOS": "26.0"
+  },
+  "notch": {
+    "version": "1.0 (1)",
+    "configuration": "Debug",
+    "executableSHA256": "341bc263c4d80ebf8240f083396325899c67fdab64d178d9751a99c77087cb99",
+    "pinnedArtifact": true
+  },
+  "chrome": {
+    "version": "155.0.8059.40"
+  },
+  "memoryReductionPercent": 52,
+  "appSizeReductionPercent": 99,
+  "notchBundleMB": 11.1,
+  "chromeBundleGB": 1.5,
+  "launchSeconds": 0.6,
+  "chromeLaunchSeconds": 0.9,
+  "launchComparisonValidated": false,
+  "backgroundCPU": {
+    "claimValidated": false,
+    "reductionPercent": 68,
+    "notchPercent": 0.6883472186974713,
+    "chromePercent": 2.178055518294617
+  },
+  "batteryLifeClaimValidated": false,
+  "audit": {
+    "passed": true,
+    "launchTrials": 5,
+    "absoluteLaunchTimesValidated": true,
+    "unmatchedLaunchViewportTrials": [
+      4
+    ],
+    "launchComparisonValidated": false,
+    "backgroundTrials": 3,
+    "resourceSamples": 60,
+    "cpuUnit": "Mach ticks converted through the device's mach_timebase_info",
+    "batteryLifeClaimValidated": false
+  }
+}
