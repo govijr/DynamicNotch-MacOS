@@ -72,7 +72,7 @@ export default function AgentSetup() {
 
       <div className="mt-7">
         <p className="text-[13px] font-medium">Then start a new agent session and ask:</p>
-        <p className="agent-setup-prompt mt-3 text-[14px] leading-6 text-[#777]">“Use Notch Browser to find the WebKit docs. Work in the background.”</p>
+        <p className="mt-3 border-l-2 border-[#e5e5e9] pl-3.5 text-[14px] leading-6 text-[#777]">“Use Notch Browser to find the WebKit docs. Work in the background.”</p>
       </div>
 
       <details className="group mt-5 text-[12px] leading-5 text-[#777]">

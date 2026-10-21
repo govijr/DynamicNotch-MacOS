@@ -3,11 +3,9 @@ import type { ReactNode } from "react";
 import DemoVideo from "./demo-video";
 import FeatureVideo from "./feature-video";
 import BrowserComparison from "./browser-comparison";
-import AgentSetup from "./agent-setup";
-import AgentTerminal, { AgentSetupLink } from "./agent-terminal";
+import AgentFeatures from "./agent-features";
 import Reveal from "./reveal";
 import "./landing.css";
-import "./agent-feature.css";
 
 const checkoutUrl = "https://buy.polar.sh/polar_cl_h61CaUncTVTTbKDnENNCs7cizvFTBYopQmWaS15R88r";
 const brands = ["Datadog", "Figma", "Ramp", "Adobe", "Stripe", "Amazon"];
@@ -86,35 +84,7 @@ export default function Home() {
             </Reveal>
           </article>
 
-          <article id="agents" className="feature-story agent-feature" aria-labelledby="agents-title">
-            <Reveal className="landing-container feature-heading">
-              <p className="landing-eyebrow">Built for your AI agent</p>
-              <h2 id="agents-title" className="landing-heading agent-heading">Your browser.<br />Your agent’s, too.</h2>
-              <p className="agent-feature-description">Let Codex or Claude Code research, collect, and act on the web. In the same little browser you use, with your logins and your control.</p>
-              <AgentSetupLink />
-            </Reveal>
-            <Reveal variant="media">
-              <AgentTerminal />
-            </Reveal>
-            <Reveal className="landing-container">
-              <details id="agent-setup" className="agent-connection">
-                <summary><span>Set up your agent</span><span className="agent-connection-note">CLI + skills included</span><span className="agent-connection-plus" aria-hidden="true">+</span></summary>
-                <div className="agent-onboarding" aria-labelledby="agent-setup-title">
-                <div className="agent-onboarding-heading">
-                  <h3 id="agent-setup-title">One setup.<br />Then just ask.</h3>
-                  <p className="agent-onboarding-description">The CLI and agent skills come with the Mac app. Connect your agent once, then ask for what you need in plain language.</p>
-                  <ol className="agent-onboarding-steps">
-                    <li><span aria-hidden="true">01</span>Install and activate Notch Browser.</li>
-                    <li><span aria-hidden="true">02</span>Run the setup command for your agent.</li>
-                    <li><span aria-hidden="true">03</span>Start a new agent session and ask.</li>
-                  </ol>
-                  <a href="/skills/notch-browser/SKILL.md" download="SKILL.md" className="agent-skill-link">Download the agent skill <span aria-hidden="true">↓</span></a>
-                </div>
-                <AgentSetup />
-                </div>
-              </details>
-            </Reveal>
-          </article>
+          <AgentFeatures />
 
           <article className="feature-story" aria-labelledby="embed-title">
             <Reveal className="landing-container feature-heading">

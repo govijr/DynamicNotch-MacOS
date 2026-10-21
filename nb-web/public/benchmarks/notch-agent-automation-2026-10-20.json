@@ -1,0 +1,568 @@
+{
+  "schemaVersion": 1,
+  "measuredOn": "2026-10-20",
+  "claim": "22 times faster in our local form automation test compared with Codex\u2019s in-app browser.",
+  "scope": "Preliminary browser API execution comparison for one controlled local workflow. Not a rendering-engine or end-to-end agent benchmark.",
+  "environment": {
+    "cpu": "Apple M4 Pro",
+    "ramGiB": 24,
+    "macOS": "26.0",
+    "codexAppVersion": "26.1013.40934 (20770)",
+    "notchAppVersion": "1.0 (1), signed Debug preview",
+    "viewportCSSPixels": {
+      "width": 870,
+      "height": 262
+    },
+    "pageVisibility": "visible"
+  },
+  "method": {
+    "task": "Navigate to the local travel form, take a fresh snapshot, fill three fields, select a destination, check a preference, submit, and verify every saved value and exactly one save.",
+    "fixtureSHA256": "ab52273bb10b36666585eea1c4c3b206c67b7665e09a54fa6301f2d7a53e9365",
+    "controls": "Identical local fixture bytes served with no-store; same Mac and viewport; all controls visible. Five-run blocks in Codex, Notch, Notch, Codex order, with one excluded warmup per block.",
+    "timingIncludes": [
+      "navigation",
+      "snapshot",
+      "interactions",
+      "result verification"
+    ],
+    "timingExcludes": [
+      "model thinking",
+      "tool-call setup",
+      "app and process startup",
+      "presentation settling",
+      "warmups",
+      "exploration",
+      "result-file writes",
+      "screenshots"
+    ],
+    "drivers": {
+      "notch": "Bundled JavaScript client, compact snapshot references and synthesized DOM events.",
+      "codex": "Codex in-app browser through its Playwright locator and input API."
+    },
+    "limitation": "Different automation drivers. Checkbox and button waits account for most of the local gap. This result does not establish a general web-task or browser-engine speed advantage."
+  },
+  "controlledForm": {
+    "codex": {
+      "samples": 10,
+      "successes": 10,
+      "medianMs": 616.1212705000653,
+      "minMs": 605.157125000027,
+      "maxMs": 635.2756250000093,
+      "p95NearestRankMs": 635.2756250000093,
+      "phaseMediansMs": {
+        "checkRail": 270.0429379999987,
+        "fillEmail": 5.182937500008848,
+        "fillName": 5.555792000028305,
+        "fillNotes": 5.379208499973174,
+        "navigate": 30.38722949998919,
+        "save": 264.3384584999876,
+        "selectDestination": 4.076395999989472,
+        "snapshot": 8.5946249999688,
+        "verify": 17.63458349998109
+      }
+    },
+    "notch": {
+      "samples": 10,
+      "successes": 10,
+      "medianMs": 27.88589599999989,
+      "minMs": 25.209542000000056,
+      "maxMs": 35.38149999999996,
+      "p95NearestRankMs": 35.38149999999996,
+      "phaseMediansMs": {
+        "checkRail": 1.3113119999999867,
+        "fillEmail": 1.5196045000000709,
+        "fillName": 1.6699375000001169,
+        "fillNotes": 1.435124999999914,
+        "navigate": 13.723583500000075,
+        "save": 1.3635210000001052,
+        "selectDestination": 1.4814380000000256,
+        "snapshot": 3.497292000000016,
+        "verify": 1.7665209999999547
+      }
+    },
+    "medianExecutionRatio": 22.094368798480343
+  },
+  "trials": {
+    "notch": [
+      {
+        "trial": 0,
+        "block": "N1",
+        "warmup": true,
+        "ok": true,
+        "totalMs": 50.734707999999955,
+        "phasesMs": {
+          "navigate": 28.46520899999996,
+          "snapshot": 4.391958999999815,
+          "fillName": 3.8403330000001006,
+          "fillEmail": 1.7487089999999625,
+          "selectDestination": 2.5490409999999883,
+          "fillNotes": 3.088999999999942,
+          "checkRail": 1.8458329999998568,
+          "save": 2.866042000000107,
+          "verify": 1.86200000000008
+        },
+        "snapshotBytes": 1151
+      },
+      {
+        "trial": 1,
+        "block": "N1",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 35.38149999999996,
+        "phasesMs": {
+          "navigate": 18.711666999999807,
+          "snapshot": 4.472333999999819,
+          "fillName": 1.3562080000001515,
+          "fillEmail": 1.9055419999999685,
+          "selectDestination": 1.6867919999999685,
+          "fillNotes": 2.4308750000000146,
+          "checkRail": 1.6913340000000971,
+          "save": 1.3940000000000055,
+          "verify": 1.660041000000092
+        },
+        "snapshotBytes": 1150
+      },
+      {
+        "trial": 2,
+        "block": "N1",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 33.35595900000021,
+        "phasesMs": {
+          "navigate": 16.90862500000003,
+          "snapshot": 3.4383339999999407,
+          "fillName": 1.9642080000000988,
+          "fillEmail": 1.4453329999998914,
+          "selectDestination": 1.4744590000000244,
+          "fillNotes": 1.54162499999984,
+          "checkRail": 3.136250000000018,
+          "save": 2.0201670000001286,
+          "verify": 1.3616250000000036
+        },
+        "snapshotBytes": 1150
+      },
+      {
+        "trial": 3,
+        "block": "N1",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 33.87279199999989,
+        "phasesMs": {
+          "navigate": 18.813541000000214,
+          "snapshot": 3.942209000000048,
+          "fillName": 1.5005420000002232,
+          "fillEmail": 1.4136670000000322,
+          "selectDestination": 1.998792000000094,
+          "fillNotes": 1.7149999999999181,
+          "checkRail": 1.8727910000000065,
+          "save": 1.2882500000000618,
+          "verify": 1.2742910000001757
+        },
+        "snapshotBytes": 1151
+      },
+      {
+        "trial": 4,
+        "block": "N1",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 28.715583999999808,
+        "phasesMs": {
+          "navigate": 14.503084000000172,
+          "snapshot": 2.797249999999849,
+          "fillName": 2.559541000000081,
+          "fillEmail": 1.4737500000001091,
+          "selectDestination": 1.0822920000000522,
+          "fillNotes": 1.2114579999999933,
+          "checkRail": 1.1381249999999454,
+          "save": 1.333042000000205,
+          "verify": 2.5682090000000244
+        },
+        "snapshotBytes": 1150
+      },
+      {
+        "trial": 5,
+        "block": "N1",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 25.93074999999999,
+        "phasesMs": {
+          "navigate": 11.492291999999907,
+          "snapshot": 2.2371669999999995,
+          "fillName": 2.1971249999999145,
+          "fillEmail": 1.5707499999998618,
+          "selectDestination": 1.8665829999999914,
+          "fillNotes": 1.2528339999998934,
+          "checkRail": 1.335207999999966,
+          "save": 2.220207999999957,
+          "verify": 1.7147079999999733
+        },
+        "snapshotBytes": 1151
+      },
+      {
+        "trial": 0,
+        "block": "N2",
+        "warmup": true,
+        "ok": true,
+        "totalMs": 37.63291600000002,
+        "phasesMs": {
+          "navigate": 18.659874999999943,
+          "snapshot": 3.846290999999951,
+          "fillName": 1.9077909999999747,
+          "fillEmail": 1.7155409999999165,
+          "selectDestination": 1.500208999999927,
+          "fillNotes": 2.78287499999999,
+          "checkRail": 2.4081670000000486,
+          "save": 2.365417000000093,
+          "verify": 2.021333000000027
+        },
+        "snapshotBytes": 1151
+      },
+      {
+        "trial": 6,
+        "block": "N2",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 27.05620799999997,
+        "phasesMs": {
+          "navigate": 12.463957999999934,
+          "snapshot": 3.9029580000000124,
+          "fillName": 1.418875000000071,
+          "fillEmail": 1.42512499999998,
+          "selectDestination": 1.4884170000000267,
+          "fillNotes": 1.2491250000000491,
+          "checkRail": 1.2874160000000074,
+          "save": 1.7483339999999998,
+          "verify": 2.018374999999992
+        },
+        "snapshotBytes": 1151
+      },
+      {
+        "trial": 7,
+        "block": "N2",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 26.73508300000003,
+        "phasesMs": {
+          "navigate": 11.514583000000016,
+          "snapshot": 3.556250000000091,
+          "fillName": 1.8393330000000105,
+          "fillEmail": 1.860290999999961,
+          "selectDestination": 1.2328340000000253,
+          "fillNotes": 1.1729579999999942,
+          "checkRail": 2.108791999999994,
+          "save": 1.5688330000000406,
+          "verify": 1.8183339999999362
+        },
+        "snapshotBytes": 1150
+      },
+      {
+        "trial": 8,
+        "block": "N2",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 25.209542000000056,
+        "phasesMs": {
+          "navigate": 11.387624999999957,
+          "snapshot": 3.653542000000016,
+          "fillName": 1.3904580000000806,
+          "fillEmail": 1.1437079999999469,
+          "selectDestination": 1.3140409999999747,
+          "fillNotes": 1.8855839999999944,
+          "checkRail": 1.276042000000075,
+          "save": 1.2118330000000697,
+          "verify": 1.907416000000012
+        },
+        "snapshotBytes": 1151
+      },
+      {
+        "trial": 9,
+        "block": "N2",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 26.24483299999997,
+        "phasesMs": {
+          "navigate": 12.944082999999978,
+          "snapshot": 2.1914170000000013,
+          "fillName": 1.32224999999994,
+          "fillEmail": 2.298832999999945,
+          "selectDestination": 2.620457999999985,
+          "fillNotes": 1.3286249999999882,
+          "checkRail": 1.1660000000000537,
+          "save": 1.073082999999997,
+          "verify": 1.248124999999959
+        },
+        "snapshotBytes": 1151
+      },
+      {
+        "trial": 10,
+        "block": "N2",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 28.824916999999914,
+        "phasesMs": {
+          "navigate": 14.90016700000001,
+          "snapshot": 2.0837080000000014,
+          "fillName": 2.374458000000004,
+          "fillEmail": 1.5654590000000326,
+          "selectDestination": 1.373833999999988,
+          "fillNotes": 1.7592080000000578,
+          "checkRail": 1.1485419999999067,
+          "save": 1.184500000000071,
+          "verify": 2.3902080000000296
+        },
+        "snapshotBytes": 1152
+      }
+    ],
+    "codex": [
+      {
+        "trial": 0,
+        "block": "C1",
+        "warmup": true,
+        "ok": true,
+        "totalMs": 650.7214159999276,
+        "phasesMs": {
+          "navigate": 38.65262499998789,
+          "snapshot": 15.037374999956228,
+          "fillName": 8.915792000014335,
+          "fillEmail": 8.067750000045635,
+          "selectDestination": 6.919666000059806,
+          "fillNotes": 7.662624999997206,
+          "checkRail": 276.75358300004154,
+          "save": 264.0212080000201,
+          "verify": 24.618249999941327
+        },
+        "snapshotBytes": 479
+      },
+      {
+        "trial": 1,
+        "block": "C1",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 635.2756250000093,
+        "phasesMs": {
+          "navigate": 43.92295799998101,
+          "snapshot": 11.935957999899983,
+          "fillName": 6.056417000014335,
+          "fillEmail": 5.494082999997772,
+          "selectDestination": 4.513416999951005,
+          "fillNotes": 5.388291999930516,
+          "checkRail": 275.8964589999523,
+          "save": 264.65941700001713,
+          "verify": 17.34791699994821
+        },
+        "snapshotBytes": 479
+      },
+      {
+        "trial": 2,
+        "block": "C1",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 632.6954999999143,
+        "phasesMs": {
+          "navigate": 41.59754200000316,
+          "snapshot": 12.80945800000336,
+          "fillName": 5.793749999953434,
+          "fillEmail": 5.5204999999841675,
+          "selectDestination": 4.347790999920107,
+          "fillNotes": 5.769667000044137,
+          "checkRail": 275.1956250000512,
+          "save": 265.5641249999171,
+          "verify": 16.04575000004843
+        },
+        "snapshotBytes": 479
+      },
+      {
+        "trial": 3,
+        "block": "C1",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 627.8852920000209,
+        "phasesMs": {
+          "navigate": 48.79116699995939,
+          "snapshot": 10.671832999913022,
+          "fillName": 5.927999999956228,
+          "fillEmail": 5.437042000005022,
+          "selectDestination": 4.52620899991598,
+          "fillNotes": 5.98762499995064,
+          "checkRail": 270.5042919999687,
+          "save": 264.0174999999581,
+          "verify": 11.976332999998704
+        },
+        "snapshotBytes": 479
+      },
+      {
+        "trial": 4,
+        "block": "C1",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 612.2376669999212,
+        "phasesMs": {
+          "navigate": 32.37345900002401,
+          "snapshot": 13.290750000043772,
+          "fillName": 5.432832999969833,
+          "fillEmail": 5.053375000017695,
+          "selectDestination": 4.000583000015467,
+          "fillNotes": 5.477917000069283,
+          "checkRail": 268.4814999999944,
+          "save": 260.96341700002085,
+          "verify": 17.10958400007803
+        },
+        "snapshotBytes": 479
+      },
+      {
+        "trial": 5,
+        "block": "C1",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 617.4337090000045,
+        "phasesMs": {
+          "navigate": 37.68449999997392,
+          "snapshot": 9.323250000015832,
+          "fillName": 5.866666999994777,
+          "fillEmail": 4.742709000012837,
+          "selectDestination": 4.4073329999810085,
+          "fillNotes": 5.455917000072077,
+          "checkRail": 268.2572919999948,
+          "save": 264.9325419999659,
+          "verify": 16.716083000064828
+        },
+        "snapshotBytes": 479
+      },
+      {
+        "trial": 0,
+        "block": "C2",
+        "warmup": true,
+        "ok": true,
+        "totalMs": 613.84291700006,
+        "phasesMs": {
+          "navigate": 36.31729100004304,
+          "snapshot": 6.778750000055879,
+          "fillName": 4.5866669999668375,
+          "fillEmail": 4.90070800005924,
+          "selectDestination": 3.600624999962747,
+          "fillNotes": 5.127375000040047,
+          "checkRail": 267.47904100001324,
+          "save": 264.00237499992363,
+          "verify": 20.97074999997858
+        },
+        "snapshotBytes": 479
+      },
+      {
+        "trial": 6,
+        "block": "C2",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 609.670083999983,
+        "phasesMs": {
+          "navigate": 27.867624999955297,
+          "snapshot": 7.502708999905735,
+          "fillName": 5.597500000032596,
+          "fillEmail": 5.084374999976717,
+          "selectDestination": 3.558166000060737,
+          "fillNotes": 4.975124999997206,
+          "checkRail": 268.25929199997336,
+          "save": 263.81187500001397,
+          "verify": 22.962249999982305
+        },
+        "snapshotBytes": 479
+      },
+      {
+        "trial": 7,
+        "block": "C2",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 616.251583000063,
+        "phasesMs": {
+          "navigate": 28.260082999942824,
+          "snapshot": 7.710042000049725,
+          "fillName": 5.073416999890469,
+          "fillEmail": 5.315042000031099,
+          "selectDestination": 3.9834170000394806,
+          "fillNotes": 4.988541999948211,
+          "checkRail": 275.7108340000268,
+          "save": 263.0850419999333,
+          "verify": 22.055334000033326
+        },
+        "snapshotBytes": 479
+      },
+      {
+        "trial": 8,
+        "block": "C2",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 615.9909580000676,
+        "phasesMs": {
+          "navigate": 28.400999999954365,
+          "snapshot": 7.865999999921769,
+          "fillName": 5.241791999898851,
+          "fillEmail": 5.167167000006884,
+          "selectDestination": 3.8340830000815913,
+          "fillNotes": 4.985458999988623,
+          "checkRail": 269.58158400002867,
+          "save": 270.0685419999063,
+          "verify": 20.775249999947846
+        },
+        "snapshotBytes": 479
+      },
+      {
+        "trial": 9,
+        "block": "C2",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 605.157125000027,
+        "phasesMs": {
+          "navigate": 27.37037500005681,
+          "snapshot": 7.1293750000186265,
+          "fillName": 5.344707999960519,
+          "fillEmail": 5.198708000010811,
+          "selectDestination": 3.774457999970764,
+          "fillNotes": 5.3701250000158325,
+          "checkRail": 267.86287500010803,
+          "save": 265.01370799995493,
+          "verify": 18.035833000089042
+        },
+        "snapshotBytes": 479
+      },
+      {
+        "trial": 10,
+        "block": "C2",
+        "warmup": false,
+        "ok": true,
+        "totalMs": 607.5769169999985,
+        "phasesMs": {
+          "navigate": 26.837834000005387,
+          "snapshot": 7.727165999938734,
+          "fillName": 5.514084000024013,
+          "fillEmail": 5.141999999992549,
+          "selectDestination": 4.152208999963477,
+          "fillNotes": 4.682958999997936,
+          "checkRail": 272.5544579999987,
+          "save": 263.00541699992027,
+          "verify": 17.92125000001397
+        },
+        "snapshotBytes": 479
+      }
+    ]
+  },
+  "otherExploratoryTasks": {
+    "publicArticleRead": {
+      "codexMedianMs": 434.9779999998864,
+      "notchMedianMs": 261.99087499999996,
+      "successesPerBrowser": 3,
+      "controlled": false,
+      "note": "Three warm-cache runs per browser; default layouts and live network/cache paths were not matched."
+    },
+    "publicSearch": {
+      "codexSuccesses": 3,
+      "codexAttempts": 3,
+      "codexMedianMs": 1062.548250000109,
+      "notchMeasuredSuccesses": 0,
+      "notchMeasuredAttempts": 1,
+      "notchTimedAttemptMs": 20507.949540999998,
+      "notchWarmupSucceeded": true,
+      "notchWarmupMs": 4047.8572090000002,
+      "notchMedianMs": null,
+      "note": "Notch completed the warmup once, then the first measured search attempt timed out. Remaining two trials were not run; no successful median is assigned. Discovery diagnostics are retained."
+    }
+  }
+}
