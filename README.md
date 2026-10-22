@@ -161,6 +161,43 @@ final class NotchPresenter {
 
 Keep one controller alive for the lifetime of the feature. Calling `show` again updates the content and animates the window to its new geometry.
 
+## Dismissal
+
+Edge windows dismiss when the user clicks outside the notch by default. The
+controller listens to clicks both inside the app and in other apps, while
+clicks on the rendered notch shape continue to work normally:
+
+```swift
+let controller = DynamicNotchWindowController()
+
+controller.onDismiss = {
+    isShowing = false
+}
+
+controller.show(
+    placement: .edge(.top),
+    width: 420,
+    height: 72
+) {
+    Text("Click anywhere else to dismiss")
+}
+```
+
+For a surface that should stay visible until your app decides otherwise, opt
+out of click-away dismissal:
+
+```swift
+controller.dismissalPolicy = .manual
+```
+
+You can dismiss a surface from a button, timer, notification, or any other
+app-owned action:
+
+```swift
+controller.dismiss()
+// `controller.hide()` remains available as an alias.
+```
+
 ## Placement
 
 `DynamicNotchPlacement` controls the edge, alignment, and offset:
@@ -278,13 +315,9 @@ Use `cornerRadius` for the exposed corners and `shoulderRadius` for the inward t
 
 ## Demo app
 
-The package includes a small demo with:
-
-- top compact mode
-- top expanded mode
-- bottom playback mode
-- left build progress
-- right approval action
+The package includes a menu-bar demo with no startup surface. Use the native
+menu to trigger `Top`, `Bottom`, `Left`, or `Right`, hide every surface, or
+quit the demo.
 
 Run it from the package directory:
 
