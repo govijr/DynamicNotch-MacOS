@@ -1,9 +1,9 @@
 ---
 name: notch-browser
-description: Use the user's native macOS Notch Browser through its local CLI to inspect pages, operate tabs, and show web or local HTML content in the notch. Use for Notch Browser tasks; terminal-browser is a separate browser.
+description: Use the user's native macOS Ink browser through its local CLI to inspect pages, operate tabs, and show web or local HTML content in the notch. Use for Ink browser tasks; terminal-browser is a separate browser.
 ---
 
-# Notch Browser
+# Ink
 
 Use `notch-browser` to operate the actual WebKit tabs and existing signed-in
 sessions in the user's app. `notch-browser help` describes supported commands.

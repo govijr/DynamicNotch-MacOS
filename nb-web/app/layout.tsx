@@ -14,14 +14,17 @@ const notionInter = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Ink — A little browser. Right in your notch.",
+  metadataBase: new URL("https://browser.ink"),
+  title: "Ink | Browse without breaking your flow.",
   description:
-    "A lightweight browser in your Mac’s notch, for you and your AI agent. Let Codex or Claude Code browse, read pages, and take action—even while the notch is collapsed. CLI and skills included.",
-  applicationName: "Notch Browser",
+    "Meet Ink. Your favorite tabs and web apps, right in your Mac’s notch. A seamless, lightweight browser that stays out of your way.",
+  applicationName: "Ink",
   icons: { icon: "/app-icon.png", apple: "/app-icon.png" },
   openGraph: {
-    title: "Notch Browser — A little browser. Right in your notch.",
-    description: "Your browser. Your agent’s, too. Browse in the background with Codex or Claude Code. CLI and skills included in the Mac app.",
+    title: "Ink | Browse without breaking your flow.",
+    description: "Meet Ink. Your favorite tabs and web apps, right in your Mac’s notch.",
+    url: "https://browser.ink",
+    siteName: "Ink",
     type: "website",
     locale: "en_US",
   },

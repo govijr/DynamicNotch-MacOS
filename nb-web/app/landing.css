@@ -15,6 +15,7 @@
 .feature-section { padding-block: 24px 104px; scroll-margin-top: 64px; }
 .feature-heading { text-align: center; }
 .feature-heading h2 { max-width: 760px; margin-inline: auto; }
+.feature-description { max-width: 640px; margin: 22px auto 0; color: #6e6e73; font-size: 16px; line-height: 1.65; letter-spacing: -0.025em; text-wrap: balance; }
 .feature-laptop { max-width: 1040px; margin-top: 40px; }
 .feature-story + .feature-story { margin-top: 112px; }
 
@@ -23,11 +24,12 @@
 .comparison-intro { max-width: 560px; margin-top: 22px; color: #6e6e73; font-size: 18px; line-height: 1.6; letter-spacing: -0.02em; text-wrap: pretty; }
 .comparison-stats { display: flex; align-items: center; gap: 36px; margin-top: 48px; }
 .comparison-mark { display: grid; min-height: 88px; flex-shrink: 0; align-items: center; border-right: 1px solid #d9d9df; padding-right: 36px; }
-.comparison-stat-grid { display: grid; flex: 1; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
+.comparison-stat-grid { display: grid; flex: 1; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
 .comparison-stat-grid > div { display: flex; min-width: 0; flex-direction: column-reverse; justify-content: flex-end; gap: 12px; }
 .comparison-stat-grid dd { display: flex; align-items: baseline; gap: 5px; color: #163a56; font-size: clamp(42px, 5.2vw, 60px); font-weight: 600; line-height: 1; letter-spacing: -0.065em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .comparison-stat-grid dd span { font-size: 18px; font-weight: 500; letter-spacing: -0.03em; }
-.comparison-stat-grid dt { max-width: 150px; color: #6e6e73; font-size: 13px; line-height: 1.5; }
+.comparison-stat-grid dt { max-width: 240px; color: #6e6e73; font-size: 13px; line-height: 1.5; }
+.comparison-condition { display: block; margin-top: 6px; color: #747479; font-size: 11px; }
 .comparison-stat-grid sup { margin-left: 2px; font-size: 9px; }
 .comparison-positioning { margin-top: 36px; color: #424245; font-size: 16px; font-weight: 500; line-height: 1.6; letter-spacing: -0.02em; text-wrap: pretty; }
 .comparison-mobile-break { display: none; }
@@ -43,9 +45,11 @@
 .comparison-method strong { color: #53535a; font-weight: 500; }
 .comparison-method p { margin-top: 12px; }
 .comparison-method a { color: #335a79; text-decoration: underline; text-underline-offset: 3px; }
+.agent-benchmark-section { padding-bottom: 72px; }
+.agent-benchmark-heading { max-width: 400px; font-size: clamp(64px, 8vw, 100px); font-weight: 600; line-height: 0.98; letter-spacing: -0.07em; text-wrap: balance; }
 
 .pricing-section { max-width: 960px; padding-block: 72px 112px; scroll-margin-top: 48px; text-align: center; }
-.early-discount { display: flex; align-items: baseline; justify-content: center; gap: 12px; margin-bottom: 20px; font-size: 14px; font-weight: 500; }
+.early-discount { display: flex; align-items: baseline; justify-content: center; gap: 12px; margin-block: 32px 20px; font-size: 14px; font-weight: 500; }
 .early-discount del { color: #86868b; font-size: 18px; text-decoration-thickness: 1px; }
 .big-buy-button { display: flex; min-height: 160px; align-items: center; justify-content: center; gap: 18px; border-radius: 999px; padding: 30px 24px; background: #111; color: #fff; font-size: clamp(40px, 6vw, 72px); font-weight: 600; line-height: 1.1; letter-spacing: -0.055em; transition: background 200ms, transform 250ms; }
 .big-buy-button:hover { background: #262626; transform: scale(1.012); }
@@ -63,7 +67,6 @@
 .landing-disclosure > summary:hover .disclosure-plus { background: #e5e5eb; }
 .faq-answer { padding: 0 36px 24px 0; color: #6e6e73; font-size: 14px; line-height: 1.75; }
 .faq-agent-tools { max-width: 660px; padding-bottom: 28px; }
-.agent-skill-link { display: inline-block; margin-bottom: 20px; color: #335a79; font-size: 13px; font-weight: 500; text-decoration: underline; text-underline-offset: 4px; }
 .landing-footer { border-top: 1px solid #e5e5e9; background: #f5f5f7; }
 
 .landing-reveal { min-width: 0; transition: opacity 750ms ease-out, transform 900ms cubic-bezier(0.16, 1, 0.3, 1); }
@@ -84,6 +87,7 @@
   .landing-eyebrow { margin-bottom: 12px; font-size: 12px; }
   .feature-section { padding-block: 16px 64px; }
   .feature-laptop { margin-top: 28px; }
+  .feature-description { margin-top: 18px; font-size: 14px; }
   .feature-story + .feature-story { margin-top: 72px; }
   .comparison-section { padding-block: 16px 32px; }
   .comparison-intro { margin-top: 18px; font-size: 15px; }
@@ -96,10 +100,11 @@
   .comparison-positioning { margin-top: 28px; font-size: 14px; }
   .comparison-mobile-break { display: initial; }
   .comparison-note { font-size: 11px; }
+  .agent-benchmark-section { padding-bottom: 48px; }
   .pricing-section { padding-block: 56px 72px; }
   .early-discount { margin-bottom: 16px; font-size: 12px; }
   .early-discount del { font-size: 16px; }
-  .big-buy-button { min-height: 104px; gap: 12px; font-size: clamp(34px, 9vw, 44px); }
+  .big-buy-button { min-height: 104px; gap: 12px; font-size: clamp(26px, 6.5vw, 40px); }
   .faq-section { padding-bottom: 56px; }
   .faq-heading { margin-bottom: 24px; font-size: 28px; }
   .landing-disclosure > summary { min-height: 68px; font-size: 14px; }

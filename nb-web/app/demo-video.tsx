@@ -77,7 +77,7 @@ export default function DemoVideo() {
             // controls
             autoPlay
             preload="metadata"
-            aria-label="Demo of Notch Browser expanding from the Mac’s notch"
+            aria-label="Demo of Ink expanding from the Mac’s notch"
             onPlay={() => { shouldAutoPlay.current = true; setIsPlaying(true); }}
             onPause={() => {
               if (!automaticPause.current) shouldAutoPlay.current = false;
